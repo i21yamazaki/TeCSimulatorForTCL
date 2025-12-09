@@ -1,0 +1,50 @@
+; シリアルIO データ
+SIOD    EQU     2
+; シリアルIO 状態
+SIOS    EQU     3
+
+; 改行コード（\n）
+LF      EQU     0AH
+; 改行コード（\r）
+CR      EQU     0DH
+; タブ（\t）
+TAB     EQU     09H
+
+; 最上位ビット
+MSB     EQU     80H
+; 最下位ビット
+LSB     EQU     01H
+
+; ASCIIコードで小文字に付与されるビット
+LC_BIT  EQU     20H
+; ASCIIコードで大文字にするためのビットマスク
+UC_MSK  EQU     0DFH
+
+; 初期化・終了処理
+START   LD      SP, #0DCH
+        CALL    MAIN
+        HALT
+
+; G0 に 1文字入力する
+; （IPL の READ を使用）
+GETCH   EQU     0F6H
+
+; G0 を 1文字出力する
+PUTCH   PUSH    G1
+PUTCH_W IN      G1, SIOS
+        AND     G1, #80H
+        JZ      PUTCH_W
+        OUT     G0, SIOD
+        POP     G1
+        RET
+
+MSG     DC      "Hello, TeC", LF, 0     
+
+MAIN    LD      G1, #0
+LOOP    LD      G0, MSG, G1
+        CMP     G0, #0
+        JZ      FIN
+        CALL    PUTCH
+        ADD     G1, #1
+        JMP     LOOP
+FIN     RET
