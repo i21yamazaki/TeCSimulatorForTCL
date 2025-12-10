@@ -1,5 +1,7 @@
 # TeCSimulatorForTCL
 
+[![CI Tests](https://github.com/i21yamazaki/TeCSimulatorForTCL/actions/workflows/test.yml/badge.svg)](https://github.com/i21yamazaki/TeCSimulatorForTCL/actions/workflows/test.yml)
+
 TeC制御言語（TCL）を用いて TeC のシミュレーションを行うためのシミュレータです。
 
 ## インストール
