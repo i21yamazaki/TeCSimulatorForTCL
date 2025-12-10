@@ -2,8 +2,8 @@
 
 all:
 	(cd assemble; make)
-	(cd problems; make)
+	(cd judge; make)
 
 clean:
 	(cd assemble; make clean)
-	(cd problems; make clean)
+	(cd judge; make clean)
