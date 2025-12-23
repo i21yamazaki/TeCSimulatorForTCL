@@ -246,8 +246,8 @@ static const std::unordered_map<WarningCode, std::string> WarningMessageTable{
 
 /// @brief エラーを出力する。
 static inline void
-PrintError(const ErrorCode code, size_t errBegin,
-           size_t errN = std::string::npos,
+PrintError(const ErrorCode code, const size_t errBegin,
+           const size_t errN = std::string::npos,
            const std::optional<std::string> &suggestion = std::nullopt) {
   std::string msg = std::format(
       "{}行目:\e[31mエラー\e[0m: {} （エラーコード: {}）\n", CurLineNum,
@@ -257,9 +257,12 @@ PrintError(const ErrorCode code, size_t errBegin,
     msg += std::format("{:>3}| {}\n", CurLineNum - 1, Lines[CurLineNum - 2]);
   }
   msg +=
-      std::format("{:>3}| {}\e[31m{}\e[0m{}", CurLineNum,
-                  CurLine.substr(0, errBegin), CurLine.substr(errBegin, errN),
-                  CurLine.substr(std::min(errBegin + errN, CurLine.size())));
+      std::format("{:>3}| {}\e[31m{}\e[0m", CurLineNum,
+                  CurLine.substr(0, errBegin), CurLine.substr(errBegin, errN));
+  if (errN != std::string::npos) {
+    assert(errBegin + errN <= CurLine.size());
+    msg += CurLine.substr(errBegin + errN);
+  }
   if (CurLineNum != Lines.size()) {
     msg += std::format("\n{:>3}| {}", CurLineNum + 1, Lines[CurLineNum]);
   }
@@ -288,8 +291,8 @@ static constexpr uint8_t ROMStartAddr = 0xE0;
 
 /// @brief 警告を出力する。
 static inline void
-PrintWarning(const WarningCode code, size_t warningBeginIdx,
-             size_t warningN = std::string::npos,
+PrintWarning(const WarningCode code, const size_t warningBeginIdx,
+             const size_t warningN = std::string::npos,
              const std::optional<std::string> &suggestion = std::nullopt) {
   std::string msg = std::format(
       "{}行目:\e[33m警告\e[0m: {} （警告コード: {}）\n", CurLineNum,
@@ -298,11 +301,13 @@ PrintWarning(const WarningCode code, size_t warningBeginIdx,
   if (CurLineNum != 1) {
     msg += std::format("{:>3}| {}\n", CurLineNum - 1, Lines[CurLineNum - 2]);
   }
-  msg += std::format(
-      "{:>3}| {}\e[31m{}\e[0m{}", CurLineNum,
-      CurLine.substr(0, warningBeginIdx),
-      CurLine.substr(warningBeginIdx, warningN),
-      CurLine.substr(std::min(warningBeginIdx + warningN, CurLine.size())));
+  msg += std::format("{:>3}| {}\e[31m{}\e[0m", CurLineNum,
+                     CurLine.substr(0, warningBeginIdx),
+                     CurLine.substr(warningBeginIdx, warningN));
+  if (warningN != std::string::npos) {
+    assert(warningBeginIdx + warningN <= CurLine.size());
+    msg += CurLine.substr(warningBeginIdx + warningN);
+  }
   if (CurLineNum != Lines.size()) {
     msg += std::format("\n{:>3}| {}", CurLineNum + 1, Lines[CurLineNum]);
   }
@@ -440,7 +445,8 @@ static bool ParseAdd();
       ++CurIdx;
     }
     if (not IsCh('"')) {
-      PrintError(ErrorCode::DoubleQuotationExpected, exprBegIdx, CurIdx);
+      PrintError(ErrorCode::DoubleQuotationExpected, exprBegIdx,
+                 CurIdx - exprBegIdx);
       return false;
     }
   } else {
@@ -500,7 +506,7 @@ static bool ParseAdd();
   if (IsCh('H') || IsCh('h')) {
     isHex = true;
   } else if (isHex) {
-    PrintError(ErrorCode::HExpected, numBegIdx, CurIdx + 1);
+    PrintError(ErrorCode::HExpected, numBegIdx, CurIdx - numBegIdx);
     return false;
   }
   val = 0;
@@ -563,7 +569,7 @@ static bool GetAdd(int32_t &val);
   } else if (IsCh('\'')) {
     if (CurLine.size() <= CurIdx || not std::isprint(CurLine[CurIdx]) ||
         CurLine[CurIdx] == '\'') {
-      PrintError(ErrorCode::InvalidCharLit, valBegIdx, CurIdx + 1 - valBegIdx);
+      PrintError(ErrorCode::InvalidCharLit, valBegIdx, CurIdx - valBegIdx);
       return false;
     }
     val = CurLine[CurIdx++];
@@ -933,7 +939,8 @@ static inline void Pass1Line(uint8_t &curAddr) {
   // ラベル
   std::string label{};
   if (IsNameStart()) {
-    const size_t labelBegIdx = CurIdx;
+    // ラベルは必ず行頭
+    assert(CurIdx == 0);
     label = GetName();
     if (const auto it = Labels.find(label); it != Labels.end()) {
       const size_t lineNum = it->second.second;
@@ -958,11 +965,12 @@ static inline void Pass1Line(uint8_t &curAddr) {
       if (lineNum != Lines.size()) {
         msg += std::format("\n{:>3}| {}", lineNum + 1, Lines[lineNum]);
       }
-      PrintError(ErrorCode::DuplicatedLabel, labelBegIdx, CurIdx, msg);
+      // ラベルは必ず行頭から始まるため 0 から CurIdx 文字
+      PrintError(ErrorCode::DuplicatedLabel, 0, CurIdx, msg);
     }
   } else if (not IsSpaceOrComment()) {
     PrintError(
-        ErrorCode::InvalidLabel, CurIdx, std::string::npos,
+        ErrorCode::InvalidLabel, 0, std::string::npos,
         (CurIdx < CurLine.size() && (std::isprint(CurLine[CurIdx])))
             ? std::optional<
                   std::string>{"ラベルは、英字または、'_'"
@@ -998,7 +1006,7 @@ static inline void Pass1Line(uint8_t &curAddr) {
         std::string msg = std::format(
             "（現在のアドレス: {:0>3X}H, 指定されたアドレス: {:0>3X}H）",
             curAddr & 0xFF, val & 0xFF);
-        PrintError(ErrorCode::InvalidOrg, addrBegIdx, CurIdx, msg);
+        PrintError(ErrorCode::InvalidOrg, addrBegIdx, CurIdx - addrBegIdx, msg);
         return;
       }
       labelNum = val;
