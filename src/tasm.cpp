@@ -4,30 +4,52 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 /// @brief 使用方法を出力して終了する。
 /// @param cmd コマンド
 [[noreturn]] static void Usage(const char *cmd) {
-  std::cerr << std::format("usage: {} <program>.t7\n", cmd);
+  std::cerr << std::format("使用方法: {} <program>.t7\n", cmd);
   std::exit(1);
 }
 
 /// @brief エラー発生フラグ
-static bool HasErrorOccured = false;
+static bool HasErrorOccurred = false;
+
+/// @brief エラー or 警告 発生フラグ
+static bool HasErrorOrWarningOccurred = false;
 
 /// @brief エラーメッセージを出力する。
 /// @param msg エラーメッセージ
-static void PrintError(const std::string &msg) {
-  HasErrorOccured = true;
+static inline void PrintError(const std::string &msg) {
+  // 2つ目以降のエラーは読みやすいように改行を挟む
+  if (HasErrorOrWarningOccurred) {
+    std::cerr << '\n';
+  }
+  HasErrorOccurred = true;
+  HasErrorOrWarningOccurred = true;
+  std::cerr << msg << '\n';
+}
+
+/// @brief 警告メッセージを出力する。
+/// @param msg 警告メッセージ
+static inline void PrintWarning(const std::string &msg) {
+  // 2つ目以降の警告は読みやすいように改行を挟む
+  if (HasErrorOrWarningOccurred) {
+    std::cerr << '\n';
+  }
+  HasErrorOrWarningOccurred = true;
   std::cerr << msg << '\n';
 }
 
 /// @brief エラーが発生していれば終了する。
-static void CheckError() {
-  if (HasErrorOccured) {
+static inline void CheckError() {
+  if (HasErrorOccurred) {
     std::exit(1);
   }
 }
@@ -43,28 +65,41 @@ static void CheckError() {
 #define BUG(msg) Error(std::format("{}:{}: {}", __FILE__, __LINE__, msg))
 
 /// @brief ラベル
-static std::unordered_map<std::string, uint8_t> labels = {};
-
-/// @brief 入力
-static std::ifstream ifs;
+static std::unordered_map<std::string, std::pair<uint8_t, size_t>> Labels = {};
 
 /// @brief 現在読んでいる行番号
-static size_t curLineNum;
+static size_t CurLineNum = 0;
 
 /// @brief 現在読んでいる行
-static std::string curLine;
+static std::string CurLine{};
+
+/// @brief 全ての行
+static std::vector<std::string> Lines{};
 
 /// @brief 現在の文字の添え字
-static size_t curIdx;
+static size_t CurIdx = 0;
+
+/// @brief 行末・空白・コメントのいずれかであるか判定する。
+[[nodiscard]] static inline bool IsSpaceOrComment() {
+  return CurLine.size() <= CurIdx || CurLine[CurIdx] == ';' ||
+         std::isspace(CurLine[CurIdx]);
+}
+
+/// @brief 空白を読み飛ばす。
+static inline void SkipSpace() {
+  while (CurIdx < CurLine.size() && std::isspace(CurLine[CurIdx])) {
+    ++CurIdx;
+  }
+}
 
 /// @brief 空白文字とコメントを読み飛ばす。
 static inline void SkipSpaceOrComment() {
-  while (curIdx < curLine.size()) {
-    if (curLine[curIdx] == ';') {
-      curIdx = curLine.size();
+  while (CurIdx < CurLine.size()) {
+    if (CurLine[CurIdx] == ';') {
+      CurIdx = CurLine.size();
       break;
-    } else if (std::isspace(curLine[curIdx])) {
-      ++curIdx;
+    } else if (std::isspace(CurLine[CurIdx])) {
+      ++CurIdx;
     } else {
       break;
     }
@@ -75,8 +110,8 @@ static inline void SkipSpaceOrComment() {
 /// @param ch 判定する文字
 /// @return 等しい場合は true, そうでなければ false
 static inline bool IsCh(const char ch) noexcept {
-  if (curIdx < curLine.size() && curLine[curIdx] == ch) {
-    ++curIdx;
+  if (CurIdx < CurLine.size() && CurLine[CurIdx] == ch) {
+    ++CurIdx;
     return true;
   }
   return false;
@@ -85,15 +120,15 @@ static inline bool IsCh(const char ch) noexcept {
 /// @brief 現在の文字が名前の開始文字であるか判定する。
 /// @return 名前の開始文字なら true, そうでなければ false
 static inline bool IsNameStart() {
-  return curIdx < curLine.size() &&
-         (std::isalpha(curLine[curIdx]) || curLine[curIdx] == '_');
+  return CurIdx < CurLine.size() &&
+         (std::isalpha(CurLine[CurIdx]) || CurLine[CurIdx] == '_');
 }
 
 /// @brief 現在の文字が名前文字であるか判定する。
 /// @return 名前文字なら true, そうでなければ false
 static inline bool IsName() {
-  return curIdx < curLine.size() &&
-         (std::isalnum(curLine[curIdx]) || curLine[curIdx] == '_');
+  return CurIdx < CurLine.size() &&
+         (std::isalnum(CurLine[CurIdx]) || CurLine[CurIdx] == '_');
 }
 
 /// @brief 名前を取得する。
@@ -103,7 +138,7 @@ static inline std::string GetName() {
   assert(IsNameStart());
   std::string name{};
   do {
-    name += static_cast<char>(std::toupper(curLine[curIdx++]));
+    name += static_cast<char>(std::toupper(CurLine[CurIdx++]));
   } while (IsName());
   return name;
 }
@@ -112,26 +147,182 @@ static inline std::string GetName() {
 static inline void ParseName() {
   assert(IsNameStart());
   do {
-    ++curIdx;
+    ++CurIdx;
   } while (IsName());
 }
 
-/// @brief 文法エラーのエラーメッセージを出力する。
-/// @param msg エラーメッセージ
-static inline void PrintSyntaxError(const std::string &msg) {
-  PrintError(std::format("{:>3}: {}\n{}", curLineNum, msg, curLine));
+/// @brief エラーコード
+enum class ErrorCode : uint8_t {
+  /// @brief BUG
+  Bug,
+  /// @brief 'H' expected.
+  HExpected,
+  /// @brief ')' expected.
+  RPExpected,
+  /// @brief register expected.
+  RegisterExpected,
+  /// @brief invalid character literal.
+  InvalidCharLit,
+  /// @brief '\'' expected.
+  SingleQuotationExpected,
+  /// @brief '\"' expected.
+  DoubleQuotationExpected,
+  /// @brief expression expected.
+  ExpressionExpected,
+  /// @brief undefined label
+  UndefinedLabel,
+  /// @brief zero division detected.
+  ZeroDivision,
+  /// @brief unknown instruction.
+  UnknownInstruction,
+  /// @brief invalid register.
+  InvalidRegister,
+  /// @brief ',' expected.
+  CommaExpected,
+  /// @brief index register expected.
+  IndexRegisterExpected,
+  /// @brief invalid index register.
+  InvalidIndexRegister,
+  /// @brief invalid immediate address.
+  InvalidImmediate,
+  /// @brief invalid operand.
+  InvalidOperand,
+  /// @brief invalid label.
+  InvalidLabel,
+  /// @brief duplicated label.
+  DuplicatedLabel,
+  /// @brief invalid org.
+  InvalidOrg
+};
+
+/// @brief 警告コード
+enum class WarningCode : uint8_t {
+  /// @brief address out of range.
+  AddressOutOfRange,
+  /// @brief value out of range.
+  ValueOutOfRange,
+  /// @brief io address out of range.
+  IOAddressOutOfRange,
+  /// @brief writing to the ROM area.
+  WritingToTheRomArea,
+  /// @brief binary too large.
+  BinaryTooLarge,
+  /// @brief number too big.
+  NumberTooBig
+};
+
+/// @brief エラーメッセージ表
+static const std::unordered_map<ErrorCode, std::string> ErrorMessageTable{
+    {ErrorCode::RegisterExpected, "レジスタ名が必要です。"},
+    {ErrorCode::InvalidRegister, "レジスタ名が不正です。"},
+    {ErrorCode::HExpected, "16進数リテラルには、末尾に 'H' が必要です。"},
+    {ErrorCode::RPExpected, "')' （閉じ括弧） が必要です。"},
+    {ErrorCode::InvalidCharLit, "文字定数が不正です。"},
+    {ErrorCode::SingleQuotationExpected,
+     "'\\'' （シングルクォーテーション） が必要です。"},
+    {ErrorCode::ExpressionExpected, "数式が必要です。"},
+    {ErrorCode::DoubleQuotationExpected,
+     "'\\\"' （ダブルクォーテーション）が必要です。"},
+    {ErrorCode::UndefinedLabel, "ラベルが定義されていません。"},
+    {ErrorCode::ZeroDivision, "ゼロ除算が検出されました。"},
+    {ErrorCode::UnknownInstruction, "オペコードが不正です。"},
+    {ErrorCode::CommaExpected, "',' （コンマ）が必要です。"},
+    {ErrorCode::IndexRegisterExpected, "インデクスレジスタが必要です。"},
+    {ErrorCode::InvalidIndexRegister, "インデクスレジスタ名が不正です。"},
+    {ErrorCode::InvalidImmediate, "即値は使用できません。"},
+    {ErrorCode::InvalidOperand, "オペランドが不正です。"},
+    {ErrorCode::InvalidLabel, "ラベルが不正です。"},
+    {ErrorCode::DuplicatedLabel, "ラベルが重複しています。"},
+    {ErrorCode::InvalidOrg,
+     "ORG命令で、遡るアドレスを指定することはできません。"}};
+
+static const std::unordered_map<WarningCode, std::string> WarningMessageTable{
+    {WarningCode::IOAddressOutOfRange, "IOアドレスが範囲外です。"},
+    {WarningCode::AddressOutOfRange, "アドレスが範囲外です。"},
+    {WarningCode::ValueOutOfRange, "値が範囲外です。"},
+    {WarningCode::WritingToTheRomArea, "ROM領域に書き込むことはできません。"},
+    {WarningCode::BinaryTooLarge, "バイナリサイズが大きすぎます。"},
+    {WarningCode::NumberTooBig, "数値が大きすぎます。"}};
+
+/// @brief エラーを出力する。
+static inline void
+PrintError(const ErrorCode code, size_t errBegin,
+           size_t errN = std::string::npos,
+           const std::optional<std::string> &suggestion = std::nullopt) {
+  std::string msg = std::format(
+      "{}行目:\e[31mエラー\e[0m: {} （エラーコード: {}）\n", CurLineNum,
+      ErrorMessageTable.at(code), static_cast<unsigned int>(code));
+  assert(CurLineNum != 0 && Lines[CurLineNum - 1] == CurLine);
+  if (CurLineNum != 1) {
+    msg += std::format("{:>3}| {}\n", CurLineNum - 1, Lines[CurLineNum - 2]);
+  }
+  msg +=
+      std::format("{:>3}| {}\e[31m{}\e[0m{}", CurLineNum,
+                  CurLine.substr(0, errBegin), CurLine.substr(errBegin, errN),
+                  CurLine.substr(std::min(errBegin + errN, CurLine.size())));
+  if (CurLineNum != Lines.size()) {
+    msg += std::format("\n{:>3}| {}", CurLineNum + 1, Lines[CurLineNum]);
+  }
+  if (suggestion) {
+    msg += '\n';
+    msg += suggestion.value();
+  }
+  PrintError(msg);
+}
+
+static inline void
+PrintWarning(const WarningCode code,
+             const std::optional<std::string> &suggestion = std::nullopt) {
+  std::string msg = std::format("\e[33m警告\e[0m: {} （警告コード: {}）",
+                                WarningMessageTable.at(code),
+                                static_cast<unsigned int>(code));
+  if (suggestion) {
+    msg += '\n';
+    msg += suggestion.value();
+  }
+  PrintWarning(msg);
+}
+
+/// @brief ROMの開始アドレス
+static constexpr uint8_t ROMStartAddr = 0xE0;
+
+/// @brief 警告を出力する。
+static inline void
+PrintWarning(const WarningCode code, size_t warningBeginIdx,
+             size_t warningN = std::string::npos,
+             const std::optional<std::string> &suggestion = std::nullopt) {
+  std::string msg = std::format(
+      "{}行目:\e[33m警告\e[0m: {} （警告コード: {}）\n", CurLineNum,
+      WarningMessageTable.at(code), static_cast<unsigned int>(code));
+  assert(CurLineNum != 0 && Lines[CurLineNum - 1] == CurLine);
+  if (CurLineNum != 1) {
+    msg += std::format("{:>3}| {}\n", CurLineNum - 1, Lines[CurLineNum - 2]);
+  }
+  msg += std::format(
+      "{:>3}| {}\e[31m{}\e[0m{}", CurLineNum,
+      CurLine.substr(0, warningBeginIdx),
+      CurLine.substr(warningBeginIdx, warningN),
+      CurLine.substr(std::min(warningBeginIdx + warningN, CurLine.size())));
+  if (CurLineNum != Lines.size()) {
+    msg += std::format("\n{:>3}| {}", CurLineNum + 1, Lines[CurLineNum]);
+  }
+  if (suggestion) {
+    msg += '\n';
+    msg += suggestion.value();
+  }
+  PrintWarning(msg);
 }
 
 /// @brief 現在の文字が10進数文字であるか判定する。
 /// @return 10進数文字なら true, そうでなければ false
 [[nodiscard]] static inline bool IsDigit() {
-  return curIdx < curLine.size() && std::isdigit(curLine[curIdx]);
+  return CurIdx < CurLine.size() && std::isdigit(CurLine[CurIdx]);
 }
 
 /// @brief 現在の文字が16進数文字であるか判定する。
 /// @return 16進数文字なら true, そうでなければ false
 [[nodiscard]] static inline bool IsXDigit() {
-  return curIdx < curLine.size() && std::isxdigit(curLine[curIdx]);
+  return CurIdx < CurLine.size() && std::isxdigit(CurLine[CurIdx]);
 }
 
 /// @brief 数値を解析して読み飛ばす。
@@ -139,16 +330,17 @@ static inline void PrintSyntaxError(const std::string &msg) {
 [[nodiscard]] static inline bool ParseNum() {
   assert(IsDigit());
   bool isHex = false;
+  const size_t numBegIdx = CurIdx;
   do {
     if (not IsDigit()) {
       isHex = true;
     }
-    ++curIdx;
+    ++CurIdx;
   } while (IsXDigit());
   if (IsCh('H') || IsCh('h')) {
     isHex = true;
   } else if (isHex) {
-    PrintSyntaxError("'H' expected.");
+    PrintError(ErrorCode::HExpected, numBegIdx, CurIdx - numBegIdx);
     return false;
   }
   return true;
@@ -160,27 +352,30 @@ static bool ParseAdd();
 /// @brief 値を解析して読み飛ばす。
 /// @return 解析が成功すれば true, そうでなければ false
 [[nodiscard]] static bool ParseVal() {
-  SkipSpaceOrComment();
+  SkipSpace();
   if (IsCh('+') || IsCh('-')) {
-    SkipSpaceOrComment();
+    SkipSpace();
   }
-
+  // 値が始まった場所（エラーメッセージ用）
+  const size_t valBegIdx = CurIdx;
   if (IsCh('(')) {
     if (not ParseAdd()) {
       return false;
     }
     if (not IsCh(')')) {
-      PrintSyntaxError("')' expected.");
+      PrintError(ErrorCode::RPExpected, valBegIdx, CurIdx - valBegIdx);
       return false;
     }
   } else if (IsCh('\'')) {
-    if (curLine.size() <= curIdx || not std::isprint(curLine[curIdx])) {
-      PrintSyntaxError("invalid character.");
+    if (CurLine.size() <= CurIdx || (not std::isprint(CurLine[CurIdx])) ||
+        CurLine[CurIdx] == '\'') {
+      PrintError(ErrorCode::InvalidCharLit, valBegIdx, CurIdx - valBegIdx);
       return false;
     }
-    ++curIdx; // 文字
+    ++CurIdx; // 文字
     if (not IsCh('\'')) {
-      PrintSyntaxError("' expected.");
+      PrintError(ErrorCode::SingleQuotationExpected, valBegIdx,
+                 CurIdx - valBegIdx);
       return false;
     }
   } else if (IsDigit()) {
@@ -190,7 +385,7 @@ static bool ParseAdd();
   } else if (IsNameStart()) {
     ParseName();
   } else {
-    PrintSyntaxError("expression expected.");
+    PrintError(ErrorCode::ExpressionExpected, valBegIdx);
     return false;
   }
   return true;
@@ -203,7 +398,7 @@ static bool ParseAdd();
     return false;
   }
   for (;;) {
-    SkipSpaceOrComment();
+    SkipSpace();
     if (IsCh('*') || IsCh('/')) {
       if (not ParseVal()) {
         return false;
@@ -222,7 +417,7 @@ static bool ParseAdd();
     return false;
   }
   for (;;) {
-    SkipSpaceOrComment();
+    SkipSpace();
     if (IsCh('+') || IsCh('-')) {
       return false;
     } else {
@@ -236,15 +431,16 @@ static bool ParseAdd();
 /// @param count 読んだ式のバイト数カウンタ
 /// @return 解析に成功すれば true, そうでなければ false
 [[nodiscard]] static bool ParseExpr(uint8_t &count) {
-  SkipSpaceOrComment();
+  SkipSpace();
+  const size_t exprBegIdx = CurIdx;
   if (IsCh('"')) {
-    while (curIdx < curLine.size() && std::isprint(curLine[curIdx]) &&
-           curLine[curIdx] != '"') {
+    while (CurIdx < CurLine.size() && std::isprint(CurLine[CurIdx]) &&
+           CurLine[CurIdx] != '"') {
       ++count;
-      ++curIdx;
+      ++CurIdx;
     }
     if (not IsCh('"')) {
-      PrintSyntaxError("\" expected.");
+      PrintError(ErrorCode::DoubleQuotationExpected, exprBegIdx, CurIdx);
       return false;
     }
   } else {
@@ -264,7 +460,7 @@ static bool ParseAdd();
     return false;
   }
   for (;;) {
-    SkipSpaceOrComment();
+    SkipSpace();
     if (IsCh(',')) {
       if (not ParseExpr(count)) {
         return false;
@@ -276,72 +472,104 @@ static bool ParseAdd();
   return count;
 }
 
+/// @brief 16進数（大文字）の1文字をint32_t型に変換する。
+/// @param ch 文字
+/// @return int32_t型に変換された16進数の1文字
+[[nodiscard]] static inline int32_t HexToInt(const char ch) noexcept {
+  assert(('0' <= ch && ch <= '9') || ('A' <= ch && ch <= 'F'));
+  if ('A' <= ch && ch <= 'F') {
+    return ch - 'A' + 0xA;
+  }
+  return ch - '0';
+}
+
 /// @brief 数値を読み取る。
 /// @param val 読み取った値
 /// @return 読み取りが成功すれば true, そうでなければ false
-[[nodiscard]] static bool GetNum(uint8_t &val) {
-  assert(curIdx < curLine.size() && std::isdigit(curLine[curIdx]));
+[[nodiscard]] static bool GetNum(int32_t &val) {
+  assert(CurIdx < CurLine.size() && std::isdigit(CurLine[CurIdx]));
   bool isHex = false;
-  std::string numStr;
+  std::string numStr{};
+  const size_t numBegIdx = CurIdx;
   do {
-    if (not std::isdigit(curLine[curIdx])) {
+    if (not std::isdigit(CurLine[CurIdx])) {
       isHex = true;
     }
-    numStr += curLine[curIdx++];
-  } while (curIdx < curLine.size() && std::isxdigit(curLine[curIdx]));
+    numStr += std::toupper(CurLine[CurIdx++]);
+  } while (CurIdx < CurLine.size() && std::isxdigit(CurLine[CurIdx]));
   if (IsCh('H') || IsCh('h')) {
     isHex = true;
   } else if (isHex) {
-    PrintSyntaxError("'H' expected.");
+    PrintError(ErrorCode::HExpected, numBegIdx, CurIdx + 1);
     return false;
   }
-  try {
-    size_t lastIdx;
-    val = static_cast<uint8_t>(std::stoi(numStr, &lastIdx, isHex ? 16 : 10));
-    if (lastIdx != numStr.size()) {
-      BUG("stoi");
+  val = 0;
+  // 一度符号なしで計算してから符号付きに変換する
+  // (符号付きのオーバーフローは未定義動作のため)
+  uint32_t unsignedVal = 0;
+  bool overflow = false;
+  if (isHex) {
+    for (const char ch : numStr) {
+      if (static_cast<uint32_t>(
+              (std::numeric_limits<int32_t>::max() - HexToInt(ch)) >> 4) <
+          unsignedVal) {
+        overflow = true;
+      }
+      unsignedVal = (unsignedVal << 4) + HexToInt(ch);
     }
-  } catch (const std::invalid_argument &e) {
-    BUG("stoi");
-  } catch (const std::out_of_range &e) {
-    PrintSyntaxError(std::format("too big number. (value: {})", numStr));
-    return false;
+  } else {
+    for (const char ch : numStr) {
+      if (static_cast<uint32_t>(
+              (std::numeric_limits<int32_t>::max() - (ch - '0')) / 10) <
+          unsignedVal) {
+        overflow = true;
+      }
+      unsignedVal = unsignedVal * 10 + ch - '0';
+    }
+  }
+  val = static_cast<int32_t>(unsignedVal);
+  if (overflow) {
+    PrintWarning(WarningCode::NumberTooBig, numBegIdx, CurIdx - numBegIdx,
+                 std::format("数値: {}", numStr + (isHex ? "H" : "")));
   }
   return true;
 }
 
 // 再帰呼び出しのため
-static bool GetAdd(uint8_t &val);
+static bool GetAdd(int32_t &val);
 
 /// @brief 値を読みとる。
 /// @param val 読み取った値
 /// @return 解析が成功すれば true, そうでなければ false
-[[nodiscard]] static bool GetVal(uint8_t &val) {
-  SkipSpaceOrComment();
+[[nodiscard]] static bool GetVal(int32_t &val) {
+  SkipSpace();
   bool pos = true;
   if (IsCh('+')) {
-    SkipSpaceOrComment();
+    SkipSpace();
   } else if (IsCh('-')) {
-    SkipSpaceOrComment();
+    SkipSpace();
     pos = false;
   }
-
+  // 値が始まった場所（エラーメッセージ用）
+  const size_t valBegIdx = CurIdx;
   if (IsCh('(')) {
     if (not GetAdd(val)) {
       return false;
     }
     if (not IsCh(')')) {
-      PrintSyntaxError("')' expected.");
+      PrintError(ErrorCode::RPExpected, valBegIdx, CurIdx - valBegIdx);
       return false;
     }
   } else if (IsCh('\'')) {
-    if (curLine.size() <= curIdx || not std::isprint(curLine[curIdx])) {
-      PrintSyntaxError("invalid character.");
+    if (CurLine.size() <= CurIdx || not std::isprint(CurLine[CurIdx]) ||
+        CurLine[CurIdx] == '\'') {
+      PrintError(ErrorCode::InvalidCharLit, valBegIdx, CurIdx + 1 - valBegIdx);
       return false;
     }
-    val = curLine[curIdx++];
+    val = CurLine[CurIdx++];
     if (not IsCh('\'')) {
-      PrintSyntaxError("' expected.");
+      PrintError(ErrorCode::SingleQuotationExpected, valBegIdx,
+                 CurIdx - valBegIdx);
       return false;
     }
   } else if (IsDigit()) {
@@ -350,18 +578,19 @@ static bool GetAdd(uint8_t &val);
     }
   } else if (IsNameStart()) {
     std::string label = GetName();
-    if (const auto labelIt = labels.find(label); labelIt != labels.end()) {
-      val = labelIt->second;
+    if (const auto labelIt = Labels.find(label); labelIt != Labels.end()) {
+      val = labelIt->second.first;
     } else {
-      PrintSyntaxError(std::format("label: \"{}\" not found.", label));
+      PrintError(ErrorCode::UndefinedLabel, valBegIdx, CurIdx - valBegIdx,
+                 std::format("ラベル: \"{}\"", label));
       return false;
     }
   } else {
-    PrintSyntaxError("expression expected.");
+    PrintError(ErrorCode::ExpressionExpected, valBegIdx);
     return false;
   }
   if (not pos) {
-    val = static_cast<uint8_t>((~val) + 1);
+    val *= -1;
   }
   return true;
 }
@@ -369,25 +598,26 @@ static bool GetAdd(uint8_t &val);
 /// @brief 乗除算を読み取る。
 /// @param val 読み取った値
 /// @return 解析が成功すれば true, そうでなければ false
-[[nodiscard]] static bool getMul(uint8_t &val) {
+[[nodiscard]] static bool getMul(int32_t &val) {
   if (not GetVal(val)) {
     return false;
   }
   for (;;) {
-    SkipSpaceOrComment();
+    SkipSpace();
+    const size_t divBegIdx = CurIdx;
     if (IsCh('*')) {
-      uint8_t rVal;
+      int32_t rVal;
       if (not GetVal(rVal)) {
         return false;
       }
       val *= rVal;
     } else if (IsCh('/')) {
-      uint8_t rVal;
+      int32_t rVal;
       if (not GetVal(rVal)) {
         return false;
       }
       if (rVal == 0x00) {
-        PrintSyntaxError("zero division detected.");
+        PrintError(ErrorCode::ZeroDivision, divBegIdx, CurIdx - divBegIdx);
         return false;
       }
       val /= rVal;
@@ -401,20 +631,20 @@ static bool GetAdd(uint8_t &val);
 /// @brief 加減算を読み取る。
 /// @param val 読み取った値
 /// @return 解析が成功すれば true, そうでなければ false
-[[nodiscard]] static bool GetAdd(uint8_t &val) {
+[[nodiscard]] static bool GetAdd(int32_t &val) {
   if (not getMul(val)) {
     return false;
   }
   for (;;) {
-    SkipSpaceOrComment();
+    SkipSpace();
     if (IsCh('+')) {
-      uint8_t rVal;
+      int32_t rVal;
       if (not getMul(rVal)) {
         return false;
       }
       val += rVal;
     } else if (IsCh('-')) {
-      uint8_t rVal;
+      int32_t rVal;
       if (not getMul(rVal)) {
         return false;
       }
@@ -432,20 +662,30 @@ static bool GetAdd(uint8_t &val);
 /// @return 解析が成功すれば true, そうでなければ false
 [[nodiscard]] static bool getExpr(std::array<uint8_t, 256> &binary,
                                   uint8_t &curAddr) {
-  SkipSpaceOrComment();
+  SkipSpace();
+  const size_t exprBegIdx = CurIdx;
   if (IsCh('"')) {
-    while (curIdx < curLine.size() && std::isprint(curLine[curIdx]) &&
-           curLine[curIdx] != '"') {
-      binary[curAddr++] = curLine[curIdx++];
+    while (CurIdx < CurLine.size() && std::isprint(CurLine[CurIdx]) &&
+           CurLine[CurIdx] != '"') {
+      binary[curAddr++] = CurLine[CurIdx++];
     }
     if (not IsCh('"')) {
-      PrintSyntaxError("\" expected.");
+      PrintError(ErrorCode::DoubleQuotationExpected, exprBegIdx,
+                 CurIdx - exprBegIdx);
       return false;
     }
   } else {
-    if (not GetAdd(binary[curAddr++])) {
+    int32_t value = 0;
+    const size_t valueBeginIdx = CurIdx;
+    if (not GetAdd(value)) {
       return false;
     }
+    if (value < -256 || 0xFF < value) {
+      PrintWarning(WarningCode::ValueOutOfRange, valueBeginIdx,
+                   CurIdx - valueBeginIdx,
+                   std::format("範囲外の値: {}", value));
+    }
+    binary[curAddr++] = static_cast<uint8_t>(value);
   }
   return true;
 }
@@ -460,7 +700,7 @@ static bool GetAdd(uint8_t &val);
     return false;
   }
   for (;;) {
-    SkipSpaceOrComment();
+    SkipSpace();
     if (IsCh(',')) {
       if (not getExpr(binary, curAddr)) {
         return false;
@@ -693,28 +933,78 @@ static inline void Pass1Line(uint8_t &curAddr) {
   // ラベル
   std::string label{};
   if (IsNameStart()) {
+    const size_t labelBegIdx = CurIdx;
     label = GetName();
+    if (const auto it = Labels.find(label); it != Labels.end()) {
+      const size_t lineNum = it->second.second;
+      assert(lineNum != 0);
+      std::string msg =
+          std::format("重複したラベル: \"{}\"\n以前の定義\n", label);
+      if (lineNum != 1) {
+        msg += std::format("{:>3}| {}\n", lineNum - 1, Lines[lineNum - 2]);
+      }
+      assert((not Lines[lineNum - 1].empty()) &&
+             (std::isalpha(Lines[lineNum - 1].front()) ||
+              Lines[lineNum - 1].front() == '_'));
+      size_t i = 0;
+      do {
+        ++i;
+      } while (i < Lines[lineNum - 1].size() &&
+               (std::isalpha(Lines[lineNum - 1][i] ||
+                             Lines[lineNum - 1][i] == '_')));
+      msg += std::format("{:>3}| \e[33m{}\e[0m{}", lineNum,
+                         Lines[lineNum - 1].substr(0, i),
+                         Lines[lineNum - 1].substr(i));
+      if (lineNum != Lines.size()) {
+        msg += std::format("\n{:>3}| {}", lineNum + 1, Lines[lineNum]);
+      }
+      PrintError(ErrorCode::DuplicatedLabel, labelBegIdx, CurIdx, msg);
+    }
+  } else if (not IsSpaceOrComment()) {
+    PrintError(
+        ErrorCode::InvalidLabel, CurIdx, std::string::npos,
+        (CurIdx < CurLine.size() && (std::isprint(CurLine[CurIdx])))
+            ? std::optional<
+                  std::string>{"ラベルは、英字または、'_'"
+                               "（アンダースコア）で始まる必要があります。"}
+            : std::nullopt);
+    return;
   }
   // ラベルの値
   uint8_t labelNum = curAddr;
-  SkipSpaceOrComment();
+  SkipSpace();
   if (IsNameStart()) {
+    const size_t nameBegIdx = CurIdx;
     const std::string inst = GetName();
     if (inst == "EQU") {
-      uint8_t val = 0x00;
+      int32_t val = 0x00;
+      const size_t valueBeginIdx = CurIdx;
       if (not GetAdd(val)) {
         return;
       }
-      labelNum = val;
+      if (val < -256 || 0xFF < val) {
+        PrintWarning(WarningCode::ValueOutOfRange, valueBeginIdx,
+                     CurIdx - valueBeginIdx,
+                     std::format("範囲外の値: {}", val));
+      }
+      labelNum = static_cast<uint8_t>(val);
     } else if (inst == "ORG") {
-      uint8_t val = 0x00;
+      int32_t val = 0x00;
+      const size_t addrBegIdx = CurIdx;
       if (not GetAdd(val)) {
+        return;
+      }
+      if (val < curAddr) {
+        std::string msg = std::format(
+            "（現在のアドレス: {:0>3X}H, 指定されたアドレス: {:0>3X}H）",
+            curAddr & 0xFF, val & 0xFF);
+        PrintError(ErrorCode::InvalidOrg, addrBegIdx, CurIdx, msg);
         return;
       }
       labelNum = val;
       curAddr = val;
     } else if (inst == "DS") {
-      uint8_t val = 0x00;
+      int32_t val = 0x00;
       if (not GetAdd(val)) {
         return;
       }
@@ -731,27 +1021,37 @@ static inline void Pass1Line(uint8_t &curAddr) {
           [](const auto &inst) noexcept -> uint8_t { return inst.getSize(); },
           instIt->second);
       // 以降を全て読み飛ばす
-      curIdx = curLine.size();
+      CurIdx = CurLine.size();
     } else {
-      PrintSyntaxError(std::format("unkown instruction. (inst: \"{}\")", inst));
+      std::string suggestion = std::format("オペコード: {}", inst);
+      if (InstList.contains(label)) {
+        suggestion +=
+            std::format("\n"
+                        "ラベル（\"{}\"）がオペコードと一致しています。\n"
+                        "ラベルのない行には、行頭に空白またはタブが必要です。",
+                        label);
+      }
+      PrintError(ErrorCode::UnknownInstruction, nameBegIdx, CurIdx - nameBegIdx,
+                 suggestion);
       return;
     }
   }
   // ラベルがあればアドレスを登録
   if (not label.empty()) {
-    labels.emplace(label, labelNum);
+    Labels.emplace(label, std::make_pair(labelNum, CurLineNum));
   }
 }
 
 /// @brief パス1（ラベルの割り当てなど）を実行する。
 static inline void Pass1() {
   uint8_t curAddr = 0x00;
-  curLineNum = 0;
-  while (std::getline(ifs, curLine)) {
-    curIdx = 0;
-    // 行番号を進める（最初の行が1）
-    ++curLineNum;
+  CurLineNum = 0;
+  while (CurLineNum < Lines.size()) {
+    // 行を進める（行番号は最初の行が1）
+    CurLine = Lines[CurLineNum++];
+    CurIdx = 0;
     Pass1Line(curAddr);
+    // 読み終わった行を追加
   }
   // エラー発生ならここで中止
   CheckError();
@@ -759,6 +1059,65 @@ static inline void Pass1() {
 
 /// @brief 機械語列用の配列型
 using BinaryT = std::array<uint8_t, 256>;
+
+/// @brief レジスタ部分を読む。
+[[nodiscard]] static inline std::optional<GR> GetReg() {
+  if (not IsNameStart()) {
+    PrintError(ErrorCode::RegisterExpected, CurIdx);
+    return std::nullopt;
+  }
+  const size_t regNameBeg = CurIdx;
+  const std::string reg = GetName();
+  if (reg == "G0") {
+    return GR::G0;
+  } else if (reg == "G1") {
+    return GR::G1;
+  } else if (reg == "G2") {
+    return GR::G2;
+  } else if (reg == "SP") {
+    return GR::SP;
+  }
+  PrintError(ErrorCode::InvalidRegister, regNameBeg, CurIdx - regNameBeg,
+             std::format("存在しないレジスタ名: \"{}\"", reg));
+  return std::nullopt;
+}
+
+/// @brief インデクスレジスタ部分を読む。
+[[nodiscard]] static inline std::optional<XR> GetIdxReg() {
+  if (not IsNameStart()) {
+    PrintError(ErrorCode::IndexRegisterExpected, CurIdx);
+    return std::nullopt;
+  }
+  const size_t idxRegBeg = CurIdx;
+  const std::string idxReg = GetName();
+  if (idxReg == "G1") {
+    return XR::G1Idx;
+  } else if (idxReg == "G2") {
+    return XR::G2Idx;
+  }
+  std::string msg =
+      std::format("存在しないインデクスレジスタ名: \"{}\"", idxReg);
+  if (idxReg == "G0" || idxReg == "SP") {
+    msg += "\nインデクスレジスタとして使用できるのは、G1・G2のみです。";
+  }
+  PrintError(ErrorCode::InvalidIndexRegister, idxRegBeg, CurIdx - idxRegBeg,
+             msg);
+  return std::nullopt;
+}
+
+[[nodiscard]] static inline std::optional<uint8_t> GetAddress() {
+  const size_t addrBeginIdx = CurIdx;
+  int32_t addr = 0;
+  if (not GetAdd(addr)) {
+    return std::nullopt;
+  }
+  if (addr < -128 || 0xFF < addr) {
+    PrintWarning(WarningCode::AddressOutOfRange, addrBeginIdx,
+                 CurIdx - addrBeginIdx,
+                 std::format("範囲外のアドレス: {}", addr));
+  }
+  return static_cast<uint8_t>(addr);
+}
 
 /// @brief Pass2の1行分の処理を行う。
 /// @param start 開始アドレス
@@ -772,7 +1131,7 @@ static inline void Pass2Line(uint8_t &start, uint8_t &curAddr,
     ParseName();
   }
   // 空白を読み飛ばす
-  SkipSpaceOrComment();
+  SkipSpace();
   // 名前があれば命令
   if (IsNameStart()) {
     // 命令
@@ -784,7 +1143,7 @@ static inline void Pass2Line(uint8_t &start, uint8_t &curAddr,
       }
     } else if (inst == "ORG") {
       // ORG命令のオペランドを解析
-      uint8_t val = 0;
+      int32_t val = 0;
       if (not GetAdd(val)) {
         return;
       }
@@ -803,7 +1162,7 @@ static inline void Pass2Line(uint8_t &start, uint8_t &curAddr,
     } else if (inst == "DS") {
       // DS命令は解析済みだが
       // 記録していないのでもう一度解析
-      uint8_t val = 0;
+      int32_t val = 0;
       if (not GetAdd(val)) {
         return;
       }
@@ -819,9 +1178,6 @@ static inline void Pass2Line(uint8_t &start, uint8_t &curAddr,
     } else if (const auto instIt = InstList.find(inst);
                instIt != InstList.cend()) {
       // 機械語命令
-      // レジスタリスト
-      static const std::unordered_map<std::string, GR> grList = {
-          {"G0", GR::G0}, {"G1", GR::G1}, {"G2", GR::G2}, {"SP", GR::SP}};
       // 命令のタイプごとで分岐
       if (std::holds_alternative<InstType1>(instIt->second)) {
         // タイプ1の命令（オペランドなし）
@@ -831,120 +1187,97 @@ static inline void Pass2Line(uint8_t &start, uint8_t &curAddr,
         // タイプ2の命令
         const InstType2 &inst2 = std::get<InstType2>(instIt->second);
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
-        // レジスタ名が必要
-        if (not IsNameStart()) {
-          PrintSyntaxError("register expected.");
-          return;
-        }
-        // レジスタ名
-        const std::string reg = GetName();
-        if (const auto grIt = grList.find(reg); grIt != grList.cend()) {
-          inst2.getBin(binary, curAddr, grIt->second);
+        SkipSpace();
+        // レジスタ
+        if (const auto gr = GetReg()) {
+          inst2.getBin(binary, curAddr, gr.value());
         } else {
-          PrintSyntaxError(std::format("invalid register. (value: {})", reg));
           return;
         }
       } else if (std::holds_alternative<InstType3>(instIt->second)) {
         // タイプ3の命令 (IN or OUT)
         const InstType3 &inst3 = std::get<InstType3>(instIt->second);
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
-        // レジスタ名が必要
-        if (not IsNameStart()) {
-          PrintSyntaxError("register expected.");
-          return;
-        }
-        // レジスタ名
-        const std::string reg = GetName();
+        SkipSpace();
         // レジスタ
         GR gr = GR::G0;
-        if (const auto grIt = grList.find(reg); grIt != grList.cend()) {
-          gr = grIt->second;
+        if (const auto optGR = GetReg()) {
+          gr = optGR.value();
         } else {
-          PrintSyntaxError(std::format("invalid register. (value: {})", reg));
           return;
         }
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
         // ',' が必要
         if (not IsCh(',')) {
-          PrintSyntaxError("',' expected.");
+          PrintError(
+              ErrorCode::CommaExpected, CurIdx, std::string::npos,
+              (CurIdx == CurLine.size())
+                  ? std::optional<std::string>{std::format(
+                        "{}命令は、IOアドレスを指定する必要があります。", inst)}
+                  : std::nullopt);
           return;
         }
         // アドレス
-        uint8_t addr = 0x00;
+        int32_t addr = 0x00;
+        const size_t addrBegIdx = CurIdx;
         if (not GetAdd(addr)) {
           return;
         }
-        // IOアドレスが 10H 以上ならエラー
-        if (0x10 <= addr) {
-          PrintSyntaxError(std::format(
-              "io address must be lower than 10H. (address: 0{:>2X}H)",
-              static_cast<unsigned int>(addr)));
-          return;
+        // IOアドレスが範囲外なら警告
+        if (addr < 0 || 0x10 <= addr) {
+          PrintWarning(
+              WarningCode::IOAddressOutOfRange, addrBegIdx, CurIdx - addrBegIdx,
+              std::format("範囲外のIOアドレス: {:0>3X}H", addr & 0xFF));
         }
-        inst3.getBin(binary, curAddr, gr, addr);
+        inst3.getBin(binary, curAddr, gr, static_cast<uint8_t>(addr & 0xFF));
       } else if (std::holds_alternative<InstType4>(instIt->second)) {
         // タイプ4の命令
         const InstType4 &inst4 = std::get<InstType4>(instIt->second);
-        SkipSpaceOrComment();
-        if (not IsNameStart()) {
-          PrintSyntaxError("register expected.");
-          return;
-        }
-        // レジスタ名
-        const std::string reg = GetName();
+        SkipSpace();
         // レジスタ
         GR gr = GR::G0;
-        if (const auto grIt = grList.find(reg); grIt != grList.cend()) {
-          gr = grIt->second;
+        if (const auto optGR = GetReg()) {
+          gr = optGR.value();
         } else {
-          PrintSyntaxError(std::format("invalid register. (value: {})", reg));
           return;
         }
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
         // ',' が必要
         if (not IsCh(',')) {
-          PrintSyntaxError("',' expected.");
+          PrintError(ErrorCode::CommaExpected, CurIdx);
           return;
         }
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
         // アドレッシングモード
         XR xr = XR::Direct;
         // アドレス
-        uint8_t addr = 0x00;
+        uint8_t addr = 0;
         if (IsCh('#')) {
           // '#' があれば即値
           xr = XR::Imm;
-          if (not GetAdd(addr)) {
+          if (const auto optAddr = GetAddress()) {
+            addr = optAddr.value();
+          } else {
             return;
           }
         } else {
-          if (not GetAdd(addr)) {
+          if (const auto optAddr = GetAddress()) {
+            addr = optAddr.value();
+          } else {
             return;
           }
           // 空白を読み飛ばす
-          SkipSpaceOrComment();
+          SkipSpace();
           if (IsCh(',')) {
             // ',' があればインデックスモード
             // 空白を読み飛ばす
-            SkipSpaceOrComment();
-            if (not IsNameStart()) {
-              PrintSyntaxError("index register expected.");
-              return;
-            }
-            // インデックスレジスタ名
-            const std::string idxReg = GetName();
-            if (idxReg == "G1") {
-              xr = XR::G1Idx;
-            } else if (idxReg == "G2") {
-              xr = XR::G2Idx;
+            SkipSpace();
+            if (const auto idxReg = GetIdxReg()) {
+              xr = idxReg.value();
             } else {
-              PrintSyntaxError(
-                  std::format("index register expected. (value: {})", idxReg));
               return;
             }
           }
@@ -953,109 +1286,96 @@ static inline void Pass2Line(uint8_t &start, uint8_t &curAddr,
       } else if (std::holds_alternative<InstType5>(instIt->second)) {
         // タイプ5の命令 (ST)
         const InstType5 &inst5 = std::get<InstType5>(instIt->second);
-        SkipSpaceOrComment();
-        if (not IsNameStart()) {
-          PrintSyntaxError("register expected.");
-          return;
-        }
-        // レジスタ名
-        const std::string reg = GetName();
-        // レジスタ
+        SkipSpace();
         GR gr = GR::G0;
-        if (const auto grIt = grList.find(reg); grIt != grList.cend()) {
-          gr = grIt->second;
+        if (const auto optGR = GetReg()) {
+          gr = optGR.value();
         } else {
-          PrintSyntaxError("register expected.");
           return;
         }
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
         // ',' が必要
         if (not IsCh(',')) {
-          PrintSyntaxError("',' expected.");
+          PrintError(ErrorCode::CommaExpected, CurIdx);
           return;
         }
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
         // タイプ5の命令で即値は使用不可
         if (IsCh('#')) {
-          PrintSyntaxError("immediate addressing mode is not allowed in ST "
-                           "instruction.");
+          PrintError(ErrorCode::InvalidImmediate, CurIdx - 1);
           return;
         }
         // アドレス
         uint8_t addr = 0x00;
-        // アドレッシングモード
-        XR xr = XR::Direct;
-        if (not GetAdd(addr)) {
+        const size_t addrBeginIdx = CurIdx;
+        if (const auto optAddr = GetAddress()) {
+          addr = optAddr.value();
+        } else {
           return;
         }
+        const size_t addrN = CurIdx - addrBeginIdx;
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
+        // アドレッシングモード
+        XR xr = XR::Direct;
         if (IsCh(',')) {
           // ',' があればインデックスモード
-          SkipSpaceOrComment();
-          if (not IsNameStart()) {
-            PrintSyntaxError("index register expected.");
-            return;
-          }
-          // インデックスレジスタ名
-          const std::string idxReg = GetName();
-          if (idxReg == "G1") {
-            xr = XR::G1Idx;
-          } else if (idxReg == "G2") {
-            xr = XR::G2Idx;
+          SkipSpace();
+          if (const auto optXR = GetIdxReg()) {
+            xr = optXR.value();
           } else {
-            PrintSyntaxError(
-                std::format("index register expected. (value: {})", idxReg));
             return;
           }
+        } else if (ROMStartAddr <= addr) {
+          // ダイレクトアドレシングモードでROM領域への書き込み
+          // Type5の命令は（今のところ）ST命令しかない
+          PrintWarning(
+              WarningCode::WritingToTheRomArea, addrBeginIdx, addrN,
+              std::format("書き込み先アドレスとして、"
+                          "{:0>3X}H番地が指定されています。\n"
+                          "{:0>3X}H番地以降はROM領域のため、"
+                          "この命令を実行しても主記憶上の値は変更されません。",
+                          addr & 0xFF, ROMStartAddr & 0xFF));
         }
         inst5.getBin(binary, curAddr, gr, xr, addr);
       } else if (std::holds_alternative<InstType6>(instIt->second)) {
         // タイプ6の命令
         const InstType6 &inst6 = std::get<InstType6>(instIt->second);
-        uint8_t addr = 0x00;
-        if (not GetAdd(addr)) {
+        uint8_t addr = 0;
+        if (const auto optAddr = GetAddress()) {
+          addr = optAddr.value();
+        } else {
           return;
         }
-        XR xr = XR::Direct;
         // 空白を読み飛ばす
-        SkipSpaceOrComment();
+        SkipSpace();
+        XR xr = XR::Direct;
         if (IsCh(',')) {
           // ',' があればインデックスモード
           // 空白を読み飛ばす
-          SkipSpaceOrComment();
-          if (not IsNameStart()) {
-            PrintSyntaxError("index register expected.");
-            return;
-          }
-          // インデックスレジスタ名
-          const std::string idxReg = GetName();
-          if (idxReg == "G1") {
-            xr = XR::G1Idx;
-          } else if (idxReg == "G2") {
-            xr = XR::G2Idx;
+          SkipSpace();
+          if (const auto optXR = GetIdxReg()) {
+            xr = optXR.value();
           } else {
-            PrintSyntaxError(
-                std::format("index register expected. (value: {})", idxReg));
             return;
           }
         }
         inst6.getBin(binary, curAddr, xr, addr);
       } else {
-        BUG("unkown instruction.");
+        BUG("unknown instruction.");
       }
     } else {
-      PrintSyntaxError(std::format("unkown instruction. (inst: \"{}\")", inst));
+      BUG("unknown instruction.");
       return;
     }
   }
-  // 空白を読み飛ばす
+  // 空白とコメントを読み飛ばす
   SkipSpaceOrComment();
   // 不正なオペランドが残っていたらエラー
-  if (curIdx < curLine.size()) {
-    PrintSyntaxError("invalid operand.");
+  if (CurIdx < CurLine.size()) {
+    PrintError(ErrorCode::InvalidOperand, CurIdx);
   }
 }
 
@@ -1076,15 +1396,24 @@ static inline void Pass2(const std::string &progname) {
   // 機械語列
   BinaryT binary{};
   // 行番号を初期化
-  curLineNum = 0;
+  CurLineNum = 0;
   // 1行づつ処理
-  while (std::getline(ifs, curLine)) {
+  while (CurLineNum < Lines.size()) {
+    // 行を進める
+    CurLine = Lines[CurLineNum++];
     // 文字の添え字を初期化
-    curIdx = 0;
-    // 行番号を進める
-    ++curLineNum;
+    CurIdx = 0;
     // 1行分の処理
     Pass2Line(start, curAddr, binary);
+  }
+  // ROM領域にかかっている場合
+  if (ROMStartAddr < curAddr) {
+    PrintWarning(
+        WarningCode::BinaryTooLarge,
+        std::format(
+            "プログラムは、{:0>3X}H番地まで使用しています。\n"
+            "{:0>3X}H番地以降はROM領域のため、プログラムを書き込めません。",
+            (curAddr - 1) & 0xFF, ROMStartAddr & 0xFF));
   }
   // エラーチェック
   CheckError();
@@ -1099,7 +1428,8 @@ static inline void Pass2(const std::string &progname) {
                       std::ios_base::out | std::ios_base::binary};
     // ファイルが開かなければエラー
     if (not ofs) {
-      Error(std::format("couldn't open file. (path: \"{}\")", binaryFileName));
+      Error(std::format("ファイルが開けませんでした。 (パス: \"{}\")",
+                        binaryFileName));
     }
     // 開始アドレスを書き込む
     ofs.write(reinterpret_cast<const char *>(&start), 1);
@@ -1116,13 +1446,13 @@ static inline void Pass2(const std::string &progname) {
     std::ofstream ofs{nameTableFileName, std::ios_base::out};
     // ファイルが開かなければエラー
     if (not ofs) {
-      Error(
-          std::format("couldn't open file. (path: \"{}\")", nameTableFileName));
+      Error(std::format("ファイルが開けませんでした。 (パス: \"{}\")",
+                        nameTableFileName));
     }
     // 名前表を出力
-    for (const auto &[label, addr] : labels) {
+    for (const auto &[label, addrAndLineNum] : Labels) {
       ofs << std::format("{:<8} 0{:0>2X}H\n", label + ':',
-                         static_cast<unsigned int>(addr));
+                         addrAndLineNum.first & 0xFF);
     }
   }
 }
@@ -1138,20 +1468,22 @@ int main(int argc, char const *argv[]) {
     // プログラム名から拡張子を除去
     progname.erase(progname.end() - 3, progname.end());
   } else {
-    Error(".t7 file expected.");
+    Error("拡張子は、\"t7\" である必要があります。");
   }
-  // ファイルを開く
-  ifs.open(argv[1]);
-  // 開けない時はエラー
-  if (not ifs) {
-    Error(std::format("couldn't open file. (path: \"{}\")", argv[1]));
+  {
+    // ファイルを開く
+    std::ifstream ifs{argv[1]};
+    // 開けない時はエラー
+    if (not ifs) {
+      Error(std::format("ファイルが開けませんでした。(パス: \"{}\")", argv[1]));
+    }
+    // ファイルをすべて読み取る
+    for (std::string line; std::getline(ifs, line);) {
+      std::swap(Lines.emplace_back(), line);
+    }
   }
   // パス1を実行（アドレス解決）
   Pass1();
-  // EOFフラグをクリア
-  ifs.clear();
-  // ファイルの先頭までシーク
-  ifs.seekg(0, std::ios_base::beg);
   // パス2を実行（機械語と名前表生成）
   Pass2(progname);
   return 0;
