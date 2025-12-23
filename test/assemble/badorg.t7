@@ -1,0 +1,6 @@
+; これはOK
+    ORG     00H
+; これもOK
+    ORG     10H
+; エラー
+    ORG     00H

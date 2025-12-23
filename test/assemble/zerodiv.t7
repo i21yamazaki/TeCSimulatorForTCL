@@ -1,0 +1,2 @@
+INF   EQU +1 / 0
+UNDEF EQU 0 / 0

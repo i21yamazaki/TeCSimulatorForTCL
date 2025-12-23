@@ -1,0 +1,5 @@
+    LD  G0, 3, I0
+    LD  G0, 0, G0
+    LD  G0, 0, G1
+    LD  G0, 0, G2
+    LD  G0, 0, SP
