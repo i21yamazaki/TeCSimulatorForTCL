@@ -26,11 +26,11 @@ enum class ErrorType : uint8_t {
 };
 
 /// @brief エラー発生フラグ
-static bool HasErrorOccured = false;
+static bool HasErrorOccurred = false;
 
 /// @brief エラーが発生していれば出力して終了する。
 static inline void CheckError() {
-  if (HasErrorOccured) {
+  if (HasErrorOccurred) {
     std::exit(1);
   }
 }
@@ -57,7 +57,7 @@ static void PrintError(const std::string &msg, const ErrorType type) {
     break;
   }
   std::cerr << '\n';
-  HasErrorOccured = true;
+  HasErrorOccurred = true;
 }
 
 /// @brief エラーメッセージを出力して終了する。
