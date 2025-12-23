@@ -1,9 +1,9 @@
 # C++用コンパイラ
 CXX		= g++
 # コンパイルオプション
-CFLAGS	= -pipe -std=c++20 -Wall -Wextra -O3 -march=native -DNDEBUG
+CFLAGS	= -pipe -std=c++20 -Wall -Wextra -Wc++20-compat -O3 -march=native -DNDEBUG
 # デバッグ用コンパイルオプション
-DBGFLGS	= -pipe -std=c++20 -Wall -Wextra -fsanitize=undefined
+DBGFLGS	= -pipe -std=c++20 -Wall -Wextra -Wc++20-compat -fsanitize=undefined
 
 .PONY: all
 
