@@ -11,3 +11,4 @@ install:
 clean:
 	rm -f bin/*
 	rmdir bin
+	(cd test; make clean)
