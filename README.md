@@ -4,10 +4,20 @@
 
 TeC制御言語（TCL）を用いて TeC のシミュレーションを行うためのシミュレータです。
 
+## 実行環境
+
+UNIX（macOS など）、またはそれに準ずるOS（Linux・FreeBSD 等）を想定しています。  
+macOS と Ubuntu でのみ動作確認がされています。
+
+C++用コンパイラとして、`g++`コマンドで実行できるGCC（または Apple Clang 等）がインストールされている必要があります。
+
 ## インストール
 
 以下のコマンドを順に実行することで、インストールできます。
-最後の行の、`sudo make install`ではパスワードが要求される場合があります。
+
+最後の行の、`sudo make install`ではパスワードが要求される場合があります。  
+環境によっては`sudo`が必要ない場合もあります。
+
 ```shell
 git clone https://github.com/i21yamazaki/TeCSimulatorForTCL
 cd TeCSimulatorForTCL
