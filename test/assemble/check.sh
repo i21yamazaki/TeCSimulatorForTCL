@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+# カレントディレクトリを設定
+#（常にこのファイルと同じディレクトリにする）
+cd "$(dirname "$0")"
+
 # tasm7でアセンブルした場合と機械語を比べる
 
 if [ -f /usr/local/lib/tasm/Tasm7.jar ]; then
@@ -12,14 +16,15 @@ if [ -f /usr/local/lib/tasm/Tasm7.jar ]; then
                 bin=${program%.*}.bin
                 original=${program%.*}.original.bin
                 mv $bin $original
-                tasm $program
+                ../../bin/tasm $program
                 cmp $bin $original
             else
-                ! tasm $program 2> /dev/null
+                ! ../../bin/tasm $program 2> /dev/null
             fi
         fi
     done
 else
     echo "tasm7 is not installed."
 fi
+
 echo "OK"
