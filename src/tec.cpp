@@ -1527,7 +1527,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
             eventList.emplace_back(
                 std::make_unique<Event>(EventType::WaitSerial));
           } else {
-            PrintError(std::format("unkown waiting target. (target: {})", arg),
+            PrintError(std::format("unknown waiting target. (target: {})", arg),
                        ErrorType::Input);
             return true;
           }
@@ -1604,14 +1604,14 @@ static inline EventList ReadInput(const NameTable &nameTable) {
               eventList.emplace_back(
                   std::make_unique<Event>(EventType::PrintRun));
             } else {
-              PrintError(
-                  std::format("unkown register or flag. (starts width: \"{}\")",
-                              regOrFlg),
-                  ErrorType::Input);
+              PrintError(std::format(
+                             "unknown register or flag. (starts width: \"{}\")",
+                             regOrFlg),
+                         ErrorType::Input);
               return true;
             }
           } else {
-            PrintError("unkown print object.", ErrorType::Input);
+            PrintError("unknown print object.", ErrorType::Input);
             return true;
           }
         } else if (cmd == "SERIAL") {
@@ -1675,7 +1675,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         } else if (cmd == "END") {
           return false;
         } else {
-          PrintError(std::format("unkown command. (command: {})", cmd),
+          PrintError(std::format("unknown command. (command: {})", cmd),
                      ErrorType::Input);
           return true;
         }
