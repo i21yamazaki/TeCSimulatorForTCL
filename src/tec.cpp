@@ -336,11 +336,8 @@ public:
   /// @param values 値
   void writeProg(const uint8_t start, const uint8_t size,
                  const std::array<uint8_t, 256> &values) noexcept {
-    for (uint8_t i = 0;; ++i) {
+    for (uint16_t i = 0; i < static_cast<uint16_t>(size); ++i) {
       writeMem(static_cast<uint8_t>(start + i), values[i]);
-      if (i + 1 == size) {
-        break;
-      }
     }
   }
 
@@ -603,7 +600,7 @@ private:
                          (m_intEna ? 0x80 : 0x00) | (m_c ? 0x04 : 0x00) |
                          (m_s ? 0x02 : 0x00) | (m_z ? 0x01 : 0x00)));
     // プログラムカウンタの値を割り込みベクタに設定
-    m_pc = vec;
+    m_pc = readMem(vec);
     // 割り込みを無効化
     m_intEna = false;
   }
@@ -613,7 +610,7 @@ private:
   uint8_t step() noexcept {
     // タイマ
     if (m_tmrEna) {
-      if (TmrClk <= ++m_tmrClkCnt) {
+      if (TmrClk <= m_tmrClkCnt) {
         m_tmrClkCnt = 0;
         if (m_tmrCnt == m_tmrPeriod) {
           m_tmrCnt = 0;
@@ -629,12 +626,14 @@ private:
     // 割り込み
     if (m_intEna) {
       if (m_tmrIntEna && m_int0) {
+        m_int0 = false; // INT0（タイマ割り込み）をリセット
         interrupt(Int0Vec);
       } else if (m_rxIntEna && m_rxFull) {
         interrupt(Int1Vec);
       } else if (m_txIntEna && m_txEmpty) {
         interrupt(Int2Vec);
       } else if (m_cslIntEna && m_int3) {
+        m_int3 = false; // INT3（コンソール割り込み）をリセット
         interrupt(Int3Vec);
       }
     }
@@ -986,6 +985,8 @@ private:
       }
       break;
     }
+    // 実行したステート数（= クロック数）をカウント
+    m_tmrClkCnt += states;
     return states;
   }
 };
@@ -1913,24 +1914,54 @@ class Printer {
 public:
   Printer()
       : m_serialMode(DefaultSerialMode), m_printMode(DefaultPrintMode),
-        m_buffer() {}
+        m_buffer(), m_curSrc(Src::None) {}
 
   void setSerialMode(const SerialMode mode) {
-    flush(m_serialMode);
+    if (m_curSrc == Src::Serial) {
+      flush(m_serialMode);
+    }
     m_serialMode = mode;
   }
 
-  void setPrintMode(const PrintMode mode) { m_printMode = mode; }
-
-  void serial(const uint8_t b) { m_buffer.emplace_back(b); }
-
-  void print(const uint8_t b) {
-    flush(m_serialMode);
-    m_buffer.emplace_back(b);
-    flush(m_printMode);
+  void setPrintMode(const PrintMode mode) {
+    if (m_curSrc == Src::Print) {
+      flush(m_printMode);
+    }
+    m_printMode = mode;
   }
 
-  void flush() { flush(m_serialMode); }
+  void serial(const uint8_t b) {
+    if (m_curSrc != Src::Serial) {
+      flush();
+      m_curSrc = Src::Serial;
+    }
+    m_buffer.emplace_back(b);
+  }
+
+  void print(const uint8_t b) {
+    if (m_curSrc != Src::Print) {
+      flush();
+      m_curSrc = Src::Print;
+    }
+    m_buffer.emplace_back(b);
+  }
+
+  void flush() {
+    switch (m_curSrc) {
+    case Src::None:
+      assert(m_buffer.empty());
+      break;
+    case Src::Serial:
+      flush(m_serialMode);
+      break;
+    case Src::Print:
+      flush(m_printMode);
+      break;
+    default:
+      BUG("Printer::flush");
+      break;
+    }
+  }
 
 private:
   SerialMode m_serialMode;
@@ -1938,6 +1969,8 @@ private:
   PrintMode m_printMode;
 
   std::vector<uint8_t> m_buffer;
+
+  enum class Src : uint8_t { None, Serial, Print } m_curSrc;
 
   void flush(const OutputMode mode) {
     switch (mode) {
@@ -2163,7 +2196,7 @@ int main(int argc, char const *argv[]) {
     } break;
     }
   }
-  // シリアル出力をフラッシュ
+  // 出力をフラッシュ
   printer.flush();
   std::cout << std::flush;
   assert(not tec.isRunning());
