@@ -1,0 +1,6 @@
+PIO     EQU     7
+
+LOOP    
+        IN      G0, PIO
+        OUT     G0, PIO
+        JMP     LOOP

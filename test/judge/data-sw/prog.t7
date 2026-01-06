@@ -1,0 +1,2 @@
+LOOP    IN      G0, 0H  ; G0 <- DATA_SW
+        JMP     LOOP

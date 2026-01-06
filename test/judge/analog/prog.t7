@@ -1,0 +1,23 @@
+LOOP    LD      G1, #0
+
+        IN      G0, 08H
+	ST	G0, TMP
+	XOR	G1, TMP
+
+        IN      G0, 09H
+	ST	G0, TMP
+	XOR	G1, TMP
+
+        IN      G0, 0AH
+	ST	G0, TMP
+	XOR	G1, TMP
+
+        IN      G0, 0BH
+	ST	G0, TMP
+	XOR	G1, TMP
+
+	OUT	G1, 7
+
+        JMP     LOOP
+
+TMP     DS      1

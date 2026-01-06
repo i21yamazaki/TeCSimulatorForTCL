@@ -1,0 +1,15 @@
+LOOP
+        IN      G0, 7
+        OR      G0, #0F0H
+        ST      G0, TMP
+        SHLL    G0
+        SHLL    G0
+        SHLL    G0
+        SHLL    G0
+        XOR     G0, TMP
+        OUT     G0, 7
+        OR      G0, #80H
+        OUT     G0, 0CH
+        JMP     LOOP
+
+TMP     DS      1

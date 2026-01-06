@@ -1,0 +1,37 @@
+$PRINT-MODE TEC
+
+$RUN
+
+$ANALOG CH0 0.0V
+$ANALOG CH1 0.0V
+$ANALOG CH2 0.0V
+$ANALOG CH3 0.0V
+
+$WAIT MS 10
+
+$PRINT PARALLEL     ; 000H
+
+$ANALOG CH0 3.3V
+$ANALOG CH1 0.0V
+$ANALOG CH2 0.0V
+$ANALOG CH3 0.0V
+
+$WAIT MS 10
+
+$PRINT PARALLEL     ; 0FFH
+
+$ANALOG CH0 0V
+$ANALOG CH1 1V
+$ANALOG CH2 2V
+$ANALOG CH3 3V
+
+$WAIT MS 10
+
+$PRINT PARALLEL     ; 030H
+
+$STOP
+
+$END
+
+# 4 CH の XOR をとる
+python -c "import functools, operator, sys; print(f'{functools.reduce(operator.xor, (int(float(x) * 255.0 / 3.3) for x in sys.argv[1:5])):0>3X}H')"
