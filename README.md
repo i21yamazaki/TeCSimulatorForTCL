@@ -414,7 +414,10 @@ ADCチャンネルには、`CH0` ~ `CH3` の4つがあります。
 
 例
 ```
-$ANALOG CH0 
+$ANALOG CH0 0.0V
+$ANALOG CH1 3.3V
+$ANALOG CH2 0.0mV
+$ANALOG CH3 3300mV
 ```
 
 ### PARALLEL
