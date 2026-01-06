@@ -1433,6 +1433,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
     }
     // 実数を読む
     [[nodiscard]] bool getFloat(float &val) {
+      skipSpaceOrComment();
       if (not isDigit()) {
         PrintError("number expected.", ErrorType::Input);
         return false;
@@ -1580,7 +1581,8 @@ static inline EventList ReadInput(const NameTable &nameTable) {
             std::string regOrFlg;
             do {
               regOrFlg += std::toupper(curLine[curIdx++]);
-            } while (curIdx < curLine.size() && std::isalnum(curLine[curIdx]));
+            } while (curIdx < curLine.size() &&
+                     (std::isalnum(curLine[curIdx]) || curLine[curIdx] == '-'));
             if (const auto regIt = RegList.find(regOrFlg);
                 regIt != RegList.cend()) {
               eventList.emplace_back(
@@ -1987,9 +1989,7 @@ private:
           std::cout << (((idx + 1) & 7) == 0 ? '\n' : ' ');
         }
       }
-      if ((m_buffer.size() & 7) != 0) {
-        std::cout << '\n';
-      }
+      std::cout << '\n';
       break;
     case SerialMode::TeC:
       for (const uint8_t ch : m_buffer) {
