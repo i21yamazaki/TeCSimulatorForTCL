@@ -1,0 +1,20 @@
+$RUN
+$WAIT SEC 1
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$WAIT SEC 1
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$WAIT SEC 1
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$WAIT SEC 1
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH
+$SERIAL "supercalifragilisticexpialidocious", 0AH, 0

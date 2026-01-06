@@ -1,0 +1,86 @@
+; シリアルIO データ
+SIOD    EQU     2
+; シリアルIO 状態
+SIOS    EQU     3
+
+; 改行コード（\n）
+LF      EQU     0AH
+; 改行コード（\r）
+CR      EQU     0DH
+; タブ（\t）
+TAB     EQU     09H
+
+; 最上位ビット
+MSB     EQU     80H
+; 最下位ビット
+LSB     EQU     01H
+
+; ASCIIコードで小文字に付与されるビット
+LC_BIT  EQU     20H
+; ASCIIコードで大文字にするためのビットマスク
+UC_MSK  EQU     0DFH
+
+; 初期化・終了処理
+START   LD      SP, #0DCH
+        CALL    MAIN
+        HALT
+
+; G0 に 1文字入力する
+; （IPL の READ を使用）
+GETCH   EQU     0F6H
+
+; G0 を 1文字出力する
+PUTCH   PUSH    G1
+PUTCH_W IN      G1, SIOS
+        AND     G1, #80H
+        JZ      PUTCH_W
+        OUT     G0, SIOD
+        POP     G1
+        RET
+
+; ブザー
+BUZ	EQU	0H
+
+MAIN
+        DI		; 割り込み禁止
+        LD      G0, #0	; G0 <- 0 (LOW)
+        OUT     G0, BUZ	; BUZ を LOWに設定
+	ST	G0, VAL	; VAL を LOW に設定
+	ST	G0, CNT	; CNT を 0 に設定
+        LD      G0, #1	; CONSOLE割り込みを
+        OUT     G0, 6	; ONに設定
+        EI		; 割り込み有効化
+LOOP
+	LD	G0, CNT	; G0 <- CNT
+	CMP	G0, N	; G0 が N になるまで
+	JNZ	LOOP	; 続ける
+	RET		; 終了
+
+; 割り込みハンドラ
+HANDLER
+	PUSH	G0	; G0 を保存
+	LD	G0, VAL	; G0 <- VAL
+        XOR     G0, #1	; G0を反転して
+        OUT     G0, BUZ	; BUZ に出力
+	ST	G0, VAL ; VALに戻す
+	LD	G0, CNT	; G0 <- CNT
+        ADD     G0, #1	; カウンタを増やす
+	ST	G0, CNT	; CNTに戻す
+	CMP	G0, N	; カウントがNになるまで
+	JNZ	H_CNT	; 続ける
+	LD	G0, #0	; CONSOLE割り込みを
+	OUT	G0, 6	; 無効化
+H_CNT
+	POP	G0	; G0 を復帰
+        RETI		; 割り込み終了
+
+; 繰り返し回数
+N       DS      1
+; スピーカの値
+VAL	DS	1
+; カウンタ
+CNT	DS	1
+
+; 割り込みハンドラの登録
+        ORG     0DFH
+        DC      HANDLER

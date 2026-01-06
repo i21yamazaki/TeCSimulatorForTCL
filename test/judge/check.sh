@@ -1,7 +1,5 @@
 #!/bin/sh
 set -e
-tmpfile=$(mktemp)
-trap "[ -f $tmpfile ] && rm -f $tmpfile" EXIT
 for problem in *
 do
     if [ -d $problem ]; then
@@ -16,9 +14,12 @@ do
             for casein in $problem/*.in
             do
                 caseout=${casein%.*}.out
+                casedst=${casein%.*}.dst
                 if [ -f $caseout ]; then
-                    ( set -x; ../../bin/tec $bin $nt < $casein > $tmpfile )
-                    cmp $tmpfile $caseout
+                    ( set -x; ../../bin/tec $bin $nt < $casein > $casedst )
+                    cmp $caseout $casedst
+                else
+                    echo "WARNING: file \"$caseout\" doesn't exist"
                 fi
             done
         done    

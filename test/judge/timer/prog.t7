@@ -1,0 +1,34 @@
+BUZ 	EQU 	00H     	; ブザー
+TMRVCT 	EQU 	0DCH		; 割込みベクタ
+TMRCNT 	EQU 	4 		; カウンタ
+TMRCTR 	EQU 	5 		; コントロール
+
+START
+	LD 	SP, #0DCH	; SP初期化
+	LD 	G0, #TMRINT	; 割り込みベクタ
+	ST 	G0, TMRVCT	; 設定
+	LD 	G0, #74		; 1秒の周期;(74 + 1) / 75 = 1
+	OUT 	G0, TMRCNT	; 周期レジスタ設定
+	LD 	G0, #81H	; タイマ割り込み許可
+	OUT 	G0, TMRCTR	; タイマ開始
+	EI			; 割り込み許可
+WAIT 	LD 	G0, FLG		; フラグを調べる
+	CMP 	G0, #0		; フラグが0の間
+	JZ 	WAIT		; ループ
+	LD 	G0, VAL		; ブザーの値を
+	XOR 	G0, #01H	; 反転させて
+	ST 	G0, VAL		; 保存
+	OUT 	G0, BUZ		; 出力
+	LD 	G0, #0		; フラグを
+	ST 	G0, FLG		; リセット
+	JMP 	WAIT
+
+FLG 	DC 	0
+VAL 	DC 	0
+
+TMRINT 	
+	PUSH 	G0		; G0 を保存
+	LD 	G0, #1		; フラグを
+	ST 	G0, FLG		; 設定
+	POP 	G0		; G0 を復帰
+	RETI			; 割り込み終了

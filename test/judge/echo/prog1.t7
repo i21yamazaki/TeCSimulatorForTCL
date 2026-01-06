@@ -1,0 +1,12 @@
+l1      in      g1, 3
+	and     g1, #40h
+	jz      l1
+	in      g0, 2
+	cmp     g0, #0
+	jz      end
+l2      in      g1, 3
+	and     g1, #80h
+	jz      l2
+	out     g0, 2
+	jmp     l1
+end     halt

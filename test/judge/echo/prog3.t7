@@ -1,0 +1,129 @@
+; IO割り込み版
+
+; シリアルIO データ
+SIOD    EQU     2
+; シリアルIO 状態
+SIOS    EQU     3
+; シリアルIO 制御
+SIOC    EQU     3
+
+; 改行コード（\n）
+LF      EQU     0AH
+; 改行コード（\r）
+CR      EQU     0DH
+; タブ（\t）
+TAB     EQU     09H
+
+; 最上位ビット
+MSB     EQU     80H
+; 最下位ビット
+LSB     EQU     01H
+
+; ASCIIコードで小文字に付与されるビット
+LC_BIT  EQU     20H
+; ASCIIコードで大文字にするためのビットマスク
+UC_MSK  EQU     0DFH
+
+; 初期化・終了処理
+START   LD      SP, #0DCH
+        CALL    MAIN
+        HALT
+
+; G0 に 1文字入力する
+; （IPL の READ を使用）
+GETCH   EQU     0F6H
+
+; G0 を 1文字出力する
+PUTCH   PUSH    G1
+PUTCH_W IN      G1, SIOS
+        AND     G1, #80H
+        JZ      PUTCH_W
+        OUT     G0, SIOD
+        POP     G1
+        RET
+
+MAIN
+        DI                  ; 割り込み無効化
+        LD      G0, #0      ; G0 <- 0
+        ST      G0, OFF     ; [OFF] <- G0 (= 0)
+        ST      G0, LEN     ; [LEN] <- G0 (= 0)
+        LD      G0, #1      ; G0 <- 1
+        ST      G0, ACTIVE  ; [ACTIVE] <- G0 (= 1)
+        LD      G0, #40H    ; 受信割り込みのみ
+        OUT     G0, SIOC    ; 有効化
+        EI                  ; 割り込み有効化
+LOOP    LD      G0, ACTIVE  ; G0 <- [ACTIVE]
+        CMP     G0, #1      ; [ACTIVE] が 1 の間
+        JZ      LOOP        ; ループ
+        RET                 ; 終了
+
+; 割り込みフラグ
+; TX: 80H
+; RX: 40H
+
+RX_INT  
+        PUSH    G0              ; G0 を保存
+        PUSH    G1              ; G1 を保存
+        IN      G0, SIOD        ; G0 に SIOD から 1文字読み取る
+        LD      G1, OFF         ; G1 <- [OFF]
+        ADD     G1, LEN         ; G1 <- G1 + [LEN] (= [OFF] + [LEN])
+        AND     G1, #IDX_MSK    ; G1 <- G1 & IDX_MSK
+        ST      G0, BUF, G1     ; [BUF + G1] <- G0
+        LD      G1, LEN         ; G1 <- [LEN]
+        ADD     G1, #1          ; G1 <- G1 + 1 (= [LEN] + 1)
+        ST      G1, LEN
+        CMP     G1, #BUF_SZ     ; バッファがFULLなら
+        JZ      RX_FUL          ; RX_FUL へ
+        LD      G0, #0C0H       ; 送受信割り込み有効化
+        JMP     RX_N_FUL        ; RX_N_FUL へ
+RX_FUL
+        LD      G0, #80H        ; 送信割り込みのみ有効化
+RX_N_FUL
+        OUT     G0, SIOC        ; 割り込み許可状態を更新
+        POP     G1              ; G1 を 復帰
+        POP     G0              ; G0 を 復帰
+        RETI                    ; 割り込み処理終了
+
+TX_INT
+        PUSH    G0              ; G0 を保存
+        PUSH    G1              ; G1 を保存
+        LD      G1, OFF         ; G1 <- [OFF]
+        LD      G0, BUF, G1     ; G0 <- [BUF + G1]
+        CMP     G0, #0          ; G0 が 0 なら
+        JZ      TX_FIN          ; 出力せずに終了処理へ
+        OUT     G0, SIOD        ; 出力
+        LD      G1, OFF         ; G1 <- [OFF]
+        ADD     G1, #1          ; G1 <- G1 + 1
+        AND     G1, #IDX_MSK    ; G1 <- G1 & IDX_MSK
+        ST      G1, OFF         ; [OFF] <- G1
+        LD      G1, LEN         ; G1 <- [LEN]
+        SUB     G1, #1          ; G1 <- G1 - 1
+        ST      G1, LEN         ; [LEN] <- G1
+        CMP     G1, #0          ; G1 が 0 なら
+        JZ      TX_EMP          ; TX_EMP へ
+        LD      G0, #0C0H       ; 送受信割り込み許可
+        JMP     TX_END          ; TX_END へ
+TX_EMP
+        LD      G0, #40H        ; 受信割り込みのみ許可
+        JMP     TX_END          ; TX_END へ
+TX_FIN
+        LD      G0, #00H        ; 送受信割り込み無効化
+        ST      G0, ACTIVE      ; [ACTIVE] <- G0 (= 0)
+TX_END
+        OUT     G0, SIOC    ; 割り込み許可状態を更新
+        POP     G1          ; G1 を復帰
+        POP     G0          ; G0 を復帰
+        RETI                ; 割り込み終了
+
+
+ACTIVE  DS      1
+OFF     DS      1
+LEN     DS      1
+BUF_SZ  EQU     20H
+BUF     DS      BUF_SZ         ; 32文字分
+IDX_MSK EQU     BUF_SZ - 1     ; BUF_SZが2冪のため
+
+        ORG     0DDH
+        DC      RX_INT
+        ORG     0DEH
+        DC      TX_INT

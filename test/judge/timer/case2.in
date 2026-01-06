@@ -1,0 +1,39 @@
+$RUN
+
+$WAIT MS 250
+; 250 ms
+$PRINT BUZ      ; 0
+
+$WAIT MS 500
+; 750 ms
+$PRINT BUZ      ; 0
+
+$WAIT MS 500
+; 1250 ms
+$PRINT BUZ      ; 1
+
+$WAIT MS 500
+; 1750 ms
+$PRINT BUZ      ; 1
+
+$WAIT MS 500
+; 2250 ms
+$PRINT BUZ      ; 0
+
+$WAIT MS 500
+; 2750 ms
+$PRINT BUZ      ; 0
+
+$WAIT MS 500
+; 3250 ms
+$PRINT BUZ      ; 1
+
+$WAIT MS 500
+; 3750 ms
+$PRINT BUZ      ; 1
+
+$WAIT MS 500
+; 4250 ms       ; 0
+$PRINT BUZ
+
+$STOP

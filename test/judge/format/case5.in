@@ -1,0 +1,11 @@
+G0 = 'a'
+G1 = 'b'
+G2 = 'c'
+SP = 0AH
+
+$PRINT-MODE RAW
+
+$PRINT G0
+$PRINT G1
+$PRINT G2
+$PRINT SP

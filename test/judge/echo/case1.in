@@ -1,0 +1,2 @@
+$RUN
+$SERIAL "Hello, TeC.", 0AH, 0

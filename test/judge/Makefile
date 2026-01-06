@@ -6,4 +6,4 @@ check:
 	./check.sh
 
 clean:
-	rm -f */*.bin */*.nt
+	rm -f */*.bin */*.nt */*.dst

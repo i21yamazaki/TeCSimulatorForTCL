@@ -1,0 +1,16 @@
+$RUN
+$WAIT MS 500
+$PRINT BUZ      ; 0
+$WAIT SEC 1
+$PRINT BUZ      ; 1
+$WAIT SEC 1
+$PRINT BUZ      ; 0
+$WAIT SEC 1
+$PRINT BUZ      ; 1
+$WAIT SEC 1
+$PRINT BUZ      ; 0
+$WAIT SEC 1
+$PRINT BUZ      ; 1
+$WAIT SEC 1
+$PRINT BUZ      ; 0
+$STOP
