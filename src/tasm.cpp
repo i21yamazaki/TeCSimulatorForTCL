@@ -587,8 +587,18 @@ static bool GetAdd(int32_t &val);
     if (const auto labelIt = Labels.find(label); labelIt != Labels.end()) {
       val = labelIt->second.first;
     } else {
-      PrintError(ErrorCode::UndefinedLabel, valBegIdx, CurIdx - valBegIdx,
-                 std::format("ラベル: \"{}\"", label));
+      std::string msg = std::format("ラベル: \"{}\"", label);
+      if ('A' <= label.front() && label.front() <= 'F' &&
+          label.ends_with('H') &&
+          std::all_of(
+              label.begin(), label.end() - 1, [](const char ch) -> bool {
+                return ('0' <= ch && ch <= '9') || ('A' <= ch && ch <= 'F');
+              })) {
+        msg += "\n"
+               "上位桁が A ~ F の16進数リテラルを表すには、"
+               "先頭に 0 を付与してください。";
+      }
+      PrintError(ErrorCode::UndefinedLabel, valBegIdx, CurIdx - valBegIdx, msg);
       return false;
     }
   } else {
@@ -950,18 +960,9 @@ static inline void Pass1Line(uint8_t &curAddr) {
       if (lineNum != 1) {
         msg += std::format("{:>3}| {}\n", lineNum - 1, Lines[lineNum - 2]);
       }
-      assert((not Lines[lineNum - 1].empty()) &&
-             (std::isalpha(Lines[lineNum - 1].front()) ||
-              Lines[lineNum - 1].front() == '_'));
-      size_t i = 0;
-      do {
-        ++i;
-      } while (i < Lines[lineNum - 1].size() &&
-               (std::isalpha(Lines[lineNum - 1][i] ||
-                             Lines[lineNum - 1][i] == '_')));
       msg += std::format("{:>3}| \e[33m{}\e[0m{}", lineNum,
-                         Lines[lineNum - 1].substr(0, i),
-                         Lines[lineNum - 1].substr(i));
+                         Lines[lineNum - 1].substr(0, label.size()),
+                         Lines[lineNum - 1].substr(label.size()));
       if (lineNum != Lines.size()) {
         msg += std::format("\n{:>3}| {}", lineNum + 1, Lines[lineNum]);
       }
@@ -1035,7 +1036,7 @@ static inline void Pass1Line(uint8_t &curAddr) {
       if (InstList.contains(label)) {
         suggestion +=
             std::format("\n"
-                        "ラベル（\"{}\"）がオペコードと一致しています。\n"
+                        "\"{}\"は行頭にあるためラベルとなります。\n"
                         "ラベルのない行には、行頭に空白またはタブが必要です。",
                         label);
       }
