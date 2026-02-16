@@ -41,19 +41,19 @@ static inline void CheckError() {
 static void PrintError(const std::string &msg, const ErrorType type) {
   switch (type) {
   case ErrorType::Binary:
-    std::cerr << "BINARY: " << msg;
+    std::cerr << "機械語: " << msg;
     break;
   case ErrorType::NameTable:
-    std::cerr << "NAME-TABLE: " << msg;
+    std::cerr << "名前表: " << msg;
     break;
   case ErrorType::Input:
-    std::cerr << "INPUT: " << msg;
+    std::cerr << "入力: " << msg;
     break;
   case ErrorType::Program:
-    std::cerr << "ERROR: " << msg;
+    std::cerr << "エラー: " << msg;
     break;
   case ErrorType::Bug:
-    std::cerr << "BUG: " << msg;
+    std::cerr << "バグ: " << msg;
     break;
   }
   std::cerr << '\n';
@@ -78,10 +78,40 @@ using NameTable = std::unordered_map<std::string, uint8_t>;
 /// @brief レジスタ
 enum class Reg : uint8_t { G0, G1, G2, SP, PC };
 
+/// @brief 文字列をレジスタに変換する。
+[[nodiscard]] static inline std::optional<Reg> StrToReg(const std::string &s) {
+  std::optional<Reg> reg = std::nullopt;
+  if (s == "G0") {
+    reg = Reg::G0;
+  } else if (s == "G1") {
+    reg = Reg::G1;
+  } else if (s == "G2") {
+    reg = Reg::G2;
+  } else if (s == "SP") {
+    reg = Reg::SP;
+  } else if (s == "PC") {
+    reg = Reg::PC;
+  }
+  return reg;
+}
+
 /// @brief フラグ
 enum class Flg : uint8_t { C, S, Z };
 
-/// @brief 判定用の簡易TeCエミュレータ
+/// @brief 文字列をフラグに変換する。
+[[nodiscard]] static inline std::optional<Flg> StrToFlg(const std::string &s) {
+  std::optional<Flg> flg = std::nullopt;
+  if (s == "C") {
+    flg = Flg::C;
+  } else if (s == "S") {
+    flg = Flg::S;
+  } else if (s == "Z") {
+    flg = Flg::Z;
+  }
+  return flg;
+}
+
+/// @brief 判定用の簡易TeCシミュレータ
 class TeC {
 public:
   TeC() noexcept
@@ -129,10 +159,10 @@ public:
         m_cslIntEna(false), m_extParallelOutEna(false), m_tmrElapsed(false),
         m_int0(false), m_int3(false), m_tmrClkCnt(0) {}
 
-  /// @brief 動作周波数 2.4576[MHz]
+  /// @brief 動作周波数 2.4576 MHz
   static constexpr uint64_t StatesPerSec = 2'457'600;
 
-  /// @brief シリアル入出力の速度 9600[bit/s]
+  /// @brief シリアル入出力の速度 9600 bit/s
   static constexpr uint64_t SIOBitPerSec = 9'600;
 
   /// @brief 実行を開始する。
@@ -177,7 +207,7 @@ public:
       m_pc = val;
       break;
     default:
-      BUG("TeC::setReg");
+      BUG("TeC::setReg(Reg, uint8_t) noexcept");
       break;
     }
   }
@@ -197,7 +227,7 @@ public:
       m_z = val;
       break;
     default:
-      BUG("TeC::setFlg");
+      BUG("TeC::setFlg(Flg, bool) noexcept");
       break;
     }
   }
@@ -235,7 +265,7 @@ public:
       val = m_pc;
       break;
     default:
-      BUG("TeC::getReg");
+      BUG("TeC::getReg(Reg) const noexcept");
       break;
     }
     return val;
@@ -265,7 +295,7 @@ public:
       val = m_z;
       break;
     default:
-      BUG("TeC::getFlg");
+      BUG("TeC::getFlg(Flg) const noexcept");
       break;
     }
     return val;
@@ -447,6 +477,7 @@ private:
   bool m_cslIntEna : 1;
   /// @brief 拡張パラレル出力有効フラグ
   bool m_extParallelOutEna : 1;
+  /// @brief タイマ経過フラグ
   bool m_tmrElapsed : 1;
   /// @brief タイマ割り込みフラグ
   bool m_int0 : 1;
@@ -499,7 +530,7 @@ private:
       a = static_cast<uint8_t>(addr + m_g2);
       break;
     default: // 即値（この関数では求められない）
-      BUG("TeC::calcAddr");
+      BUG("TeC::calcAddr(uint8_t, uint8_t) const noexcept");
       break;
     }
     return a;
@@ -525,7 +556,7 @@ private:
       val = addr;
       break;
     default:
-      BUG("TeC::readMem");
+      BUG("TeC::readMem(uint8_t, uint8_t) const noexcept");
       break;
     }
     return val;
@@ -549,7 +580,7 @@ private:
       m_sp = val;
       break;
     default:
-      BUG("TeC::writeReg");
+      BUG("TeC::writeReg(uint8_t, uint8_t) noexcept");
       break;
     }
   }
@@ -573,7 +604,7 @@ private:
       v = m_sp;
       break;
     default:
-      BUG("TeC::readReg");
+      BUG("TeC::readReg(uint8_t) const noexcept");
       break;
     }
     return v;
@@ -764,7 +795,7 @@ private:
           jmp = m_s;
           break;
         default:
-          BUG("TeC::step");
+          BUG("TeC::step() noexcept");
           break;
         }
         const uint8_t addr = calcAddr(xr, fetch());
@@ -846,7 +877,7 @@ private:
             val = 0x00;
             break;
           default:
-            BUG("TeC::step");
+            BUG("TeC::step() noexcept");
             break;
           }
           writeReg(gr, val);
@@ -905,7 +936,7 @@ private:
           case 0xF:
             break;
           default:
-            BUG("TeC::step");
+            BUG("TeC::step() noexcept");
             break;
           }
           states += 3;
@@ -1057,6 +1088,23 @@ enum class OutputMode : uint8_t {
   UDEC
 };
 
+[[nodiscard]] static inline std::optional<OutputMode>
+StrToOutputMode(const std::string &s) {
+  std::optional<OutputMode> mode = std::nullopt;
+  if (s == "RAW") {
+    mode = OutputMode::Raw;
+  } else if (s == "HEX") {
+    mode = OutputMode::Hex;
+  } else if (s == "TEC") {
+    mode = OutputMode::TeC;
+  } else if (s == "SDEC") {
+    mode = OutputMode::SDEC;
+  } else if (s == "UDEC") {
+    mode = OutputMode::UDEC;
+  }
+  return mode;
+}
+
 /// @brief シリアル出力モード
 using SerialMode = OutputMode;
 
@@ -1178,16 +1226,6 @@ using EventList = std::vector<std::unique_ptr<Event>>;
 /// @param nameTable 名前表
 /// @return イベント処理リスト
 static inline EventList ReadInput(const NameTable &nameTable) {
-  // レジスタ
-  static const std::unordered_map<std::string, Reg> RegList = {{"G0", Reg::G0},
-                                                               {"G1", Reg::G1},
-                                                               {"G2", Reg::G2},
-                                                               {"SP", Reg::SP},
-                                                               {"PC", Reg::PC}};
-  // フラグ
-  static const std::unordered_map<std::string, Flg> FlgList = {
-      {"C", Flg::C}, {"S", Flg::S}, {"Z", Flg::Z}};
-
   // 入力読み取り用
   struct InputReader {
     // 名前表
@@ -1239,8 +1277,9 @@ static inline EventList ReadInput(const NameTable &nameTable) {
           nameTableIt != nameTable.cend()) {
         val = nameTableIt->second;
       } else {
-        PrintError(std::format("label not found. (label: \"{}\")", label),
-                   ErrorType::Program);
+        PrintError(
+            std::format("ラベルが見つかりません。 (ラベル: \"{}\")", label),
+            ErrorType::Program);
         return false;
       }
       return true;
@@ -1267,7 +1306,8 @@ static inline EventList ReadInput(const NameTable &nameTable) {
       if (isCh('H') || isCh('h')) {
         isHex = true;
       } else if (isHex) {
-        PrintError("invalid hex num. ('H' expected.)", ErrorType::Input);
+        PrintError("16進数リテラルが不正です。（'H' が必要です。）",
+                   ErrorType::Input);
         return false;
       }
       val = 0x00;
@@ -1276,14 +1316,14 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         val =
             static_cast<uint8_t>(std::stoi(numStr, &lastIdx, isHex ? 16 : 10));
         if (lastIdx != numStr.size()) {
-          BUG(std::format("reading number: \"{}\"", numStr));
+          BUG("stoi");
           return false;
         }
       } catch (const std::invalid_argument &e) {
-        BUG(std::format("reading number: \"{}\"", numStr));
+        BUG("stoi");
         return false;
       } catch (const std::out_of_range &e) {
-        PrintError(std::format("too big number. (value: \"{}\")", numStr),
+        PrintError(std::format("値が大きすぎます。 (値: \"{}\")", numStr),
                    ErrorType::Input);
         return false;
       }
@@ -1315,21 +1355,22 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         }
         skipSpaceOrComment();
         if (not isCh(')')) {
-          PrintError("')' expected.", ErrorType::Input);
+          PrintError("')' が必要です。", ErrorType::Input);
           return false;
         }
       } else if (isCh('\'')) { // 文字定数
         if (curLine.size() <= curIdx || not std::isprint(curLine[curIdx])) {
-          PrintError("invalid character.", ErrorType::Input);
+          PrintError("文字定数が不正です。", ErrorType::Input);
           return false;
         }
         val = static_cast<uint8_t>(curLine[curIdx++]);
         if (not isCh('\'')) {
-          PrintError("' expected.", ErrorType::Input);
+          PrintError("'\\'' （クォーテーション）が必要です。",
+                     ErrorType::Input);
           return false;
         }
       } else { // エラー
-        PrintError("label or number expected.", ErrorType::Input);
+        PrintError("値が必要です。", ErrorType::Input);
         return false;
       }
       if (not pos) {
@@ -1356,7 +1397,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
             return false;
           }
           if (rVal == 0) {
-            PrintError("zero division detected.", ErrorType::Input);
+            PrintError("零除算が検出されました。", ErrorType::Input);
             return false;
           }
           val /= rVal;
@@ -1406,7 +1447,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
     [[nodiscard]] bool checkEQ() {
       skipSpaceOrComment();
       if (not isCh('=')) {
-        PrintError("'=' expected.", ErrorType::Input);
+        PrintError("'=' が必要です。", ErrorType::Input);
         return false;
       }
       return true;
@@ -1415,7 +1456,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
     [[nodiscard]] bool checkRSP() {
       skipSpaceOrComment();
       if (not isCh(']')) {
-        PrintError("']' expected.", ErrorType::Input);
+        PrintError("']' が必要です。", ErrorType::Input);
         return false;
       }
       return true;
@@ -1435,7 +1476,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
     [[nodiscard]] bool getFloat(float &val) {
       skipSpaceOrComment();
       if (not isDigit()) {
-        PrintError("number expected.", ErrorType::Input);
+        PrintError("実数が必要です。", ErrorType::Input);
         return false;
       }
       std::string numStr;
@@ -1444,7 +1485,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
       } while (isDigit());
       if (isCh('.')) {
         if (not isDigit()) {
-          PrintError("number expected.", ErrorType::Input);
+          PrintError("'.' の後に小数部がありません。", ErrorType::Input);
           return false;
         }
         numStr += '.';
@@ -1456,14 +1497,14 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         size_t lastIdx;
         val = std::stof(numStr, &lastIdx);
         if (lastIdx != numStr.size()) {
-          BUG(std::format("reading number: \"{}\"", numStr));
+          BUG("stoi");
           return false;
         }
       } catch (const std::invalid_argument &e) {
-        BUG(std::format("reading number: \"{}\"", numStr));
+        BUG("stoi");
         return false;
       } catch (const std::out_of_range &e) {
-        PrintError(std::format("too big number. (value: \"{}\")", numStr),
+        PrintError(std::format("実数が大きすぎます。 （実数: \"{}\"）", numStr),
                    ErrorType::Input);
         return false;
       }
@@ -1474,7 +1515,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
       if (isCh('$')) { // コマンド行
         std::string cmd;
         if (not getWord(cmd)) {
-          PrintError("command expected.", ErrorType::Input);
+          PrintError("コマンドが必要です。", ErrorType::Input);
           return true;
         }
         if (cmd == "RUN") {
@@ -1486,7 +1527,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         } else if (cmd == "WAIT") {
           std::string arg;
           if (not getWord(arg)) {
-            PrintError("argument expected.", ErrorType::Input);
+            PrintError("引数が必要です。", ErrorType::Input);
             return true;
           }
           if (arg == "STOP") {
@@ -1495,7 +1536,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
           } else if (arg == "STATES" || arg == "MS" || arg == "SEC") {
             skipSpaceOrComment();
             if (curLine.size() <= curIdx || not std::isdigit(curLine[curIdx])) {
-              PrintError("number of states expected.", ErrorType::Input);
+              PrintError("整数が必要です。", ErrorType::Input);
               return true;
             }
             std::string numStr;
@@ -1507,7 +1548,8 @@ static inline EventList ReadInput(const NameTable &nameTable) {
               uint64_t states =
                   static_cast<uint64_t>(std::stoull(numStr, &lastIdx, 10));
               if (lastIdx != numStr.size()) {
-                BUG(std::format("reading number: {}", numStr));
+                BUG("stoull");
+                return true;
               }
               if (arg == "MS") {
                 states = states * TeC::StatesPerSec / 1000;
@@ -1517,19 +1559,22 @@ static inline EventList ReadInput(const NameTable &nameTable) {
               eventList.emplace_back(std::make_unique<WaitStatesEvent>(
                   static_cast<uint64_t>(states)));
             } catch (const std::invalid_argument &e) {
-              BUG(std::format("reading number: {}", numStr));
+              BUG("stoull");
               return true;
             } catch (const std::out_of_range &e) {
-              PrintError(
-                  std::format("too big number of states. (value: {})", numStr),
-                  ErrorType::Input);
+              PrintError(std::format("整数が大きすぎます。"
+                                     "（整数: {}）",
+                                     numStr),
+                         ErrorType::Input);
               return true;
             }
           } else if (arg == "SERIAL") {
             eventList.emplace_back(
                 std::make_unique<Event>(EventType::WaitSerial));
           } else {
-            PrintError(std::format("unknown waiting target. (target: {})", arg),
+            PrintError(std::format("WAITコマンドの対象が不正です。"
+                                   "（対象: {}）",
+                                   arg),
                        ErrorType::Input);
             return true;
           }
@@ -1542,27 +1587,20 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         } else if (cmd == "SERIAL-MODE" || cmd == "PRINT-MODE") {
           std::string mode;
           if (not getWord(mode)) {
-            PrintError("argument expected.", ErrorType::Input);
+            PrintError("引数が必要です。", ErrorType::Input);
             return true;
           }
-          static const std::unordered_map<std::string, SerialMode> modeList = {
-              {"RAW", SerialMode::Raw},
-              {"HEX", SerialMode::Hex},
-              {"TEC", SerialMode::TeC},
-              {"SDEC", SerialMode::SDEC},
-              {"UDEC", SerialMode::UDEC}};
-          if (const auto modeIt = modeList.find(mode);
-              modeIt != modeList.cend()) {
+          if (const std::optional<OutputMode> m = StrToOutputMode(mode)) {
             if (cmd == "SERIAL-MODE") {
               eventList.emplace_back(
-                  std::make_unique<SetSerialModeEvent>(modeIt->second));
+                  std::make_unique<SetSerialModeEvent>(m.value()));
             } else {
               eventList.emplace_back(
-                  std::make_unique<SetPrintModeEvent>(modeIt->second));
+                  std::make_unique<SetPrintModeEvent>(m.value()));
             }
           } else {
-            PrintError("output mode expected. "
-                       "(RAW|HEX|TEC|SDEC|UDEC)",
+            PrintError("出力モードが必要です。"
+                       "（使用可能な出力モード: (RAW|HEX|TEC|SDEC|UDEC)）",
                        ErrorType::Input);
             return true;
           }
@@ -1583,14 +1621,12 @@ static inline EventList ReadInput(const NameTable &nameTable) {
               regOrFlg += std::toupper(curLine[curIdx++]);
             } while (curIdx < curLine.size() &&
                      (std::isalnum(curLine[curIdx]) || curLine[curIdx] == '-'));
-            if (const auto regIt = RegList.find(regOrFlg);
-                regIt != RegList.cend()) {
+            if (const std::optional<Reg> reg = StrToReg(regOrFlg)) {
               eventList.emplace_back(
-                  std::make_unique<PrintRegEvent>(regIt->second));
-            } else if (const auto flgIt = FlgList.find(regOrFlg);
-                       flgIt != FlgList.cend()) {
+                  std::make_unique<PrintRegEvent>(reg.value()));
+            } else if (const std::optional<Flg> flg = StrToFlg(regOrFlg)) {
               eventList.emplace_back(
-                  std::make_unique<PrintFlgEvent>(flgIt->second));
+                  std::make_unique<PrintFlgEvent>(flg.value()));
             } else if (regOrFlg == "PARALLEL") {
               eventList.emplace_back(
                   std::make_unique<Event>(EventType::PrintParallel));
@@ -1607,14 +1643,14 @@ static inline EventList ReadInput(const NameTable &nameTable) {
               eventList.emplace_back(
                   std::make_unique<Event>(EventType::PrintRun));
             } else {
-              PrintError(std::format(
-                             "unknown register or flag. (starts width: \"{}\")",
-                             regOrFlg),
+              PrintError(std::format("レジスタまたはフラグ名が不正です。 "
+                                     "(名前の開始部: \"{}\")",
+                                     regOrFlg),
                          ErrorType::Input);
               return true;
             }
           } else {
-            PrintError("unknown print object.", ErrorType::Input);
+            PrintError("表示対象が不正です。", ErrorType::Input);
             return true;
           }
         } else if (cmd == "SERIAL") {
@@ -1627,7 +1663,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
                 data.emplace_back(static_cast<uint8_t>(curLine[curIdx++]));
               }
               if (not isCh('"')) {
-                PrintError("\" expected.", ErrorType::Input);
+                PrintError("\" が必要です。", ErrorType::Input);
                 return true;
               }
             } else {
@@ -1643,12 +1679,12 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         } else if (cmd == "ANALOG") {
           std::string chStr;
           if (not getWord(chStr)) {
-            PrintError("ADC Channel expected.", ErrorType::Input);
+            PrintError("ADCチャンネルが必要です。", ErrorType::Input);
             return true;
           }
           if (chStr.size() != 3 || chStr[0] != 'C' || chStr[1] != 'H' ||
               chStr[2] < '0' || '3' < chStr[2]) {
-            PrintError("ADC Channel expected.", ErrorType::Input);
+            PrintError("ADCチャンネルが必要です。", ErrorType::Input);
             return true;
           }
           const uint8_t ch = static_cast<uint8_t>(chStr[2] - '0');
@@ -1665,7 +1701,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
             val = static_cast<uint8_t>(std::min(
                 255U, static_cast<unsigned int>(255 * fVal / 3300.0F)));
           } else {
-            PrintError("'V' or \"mV\" expected.", ErrorType::Input);
+            PrintError("'V' または \"mV\" が必要です。", ErrorType::Input);
             return true;
           }
           eventList.emplace_back(std::make_unique<AnalogEvent>(ch, val));
@@ -1678,8 +1714,9 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         } else if (cmd == "END") {
           return false;
         } else {
-          PrintError(std::format("unknown command. (command: {})", cmd),
-                     ErrorType::Input);
+          PrintError(
+              std::format("不正なコマンドです。（コマンド名: \"{}\"）", cmd),
+              ErrorType::Input);
           return true;
         }
       } else if (isCh('[')) { // 主記憶の値の変更
@@ -1706,7 +1743,7 @@ static inline EventList ReadInput(const NameTable &nameTable) {
         do {
           cmd += std::toupper(curLine[curIdx++]);
         } while (curIdx < curLine.size() && std::isalnum(curLine[curIdx]));
-        if (const auto regIt = RegList.find(cmd); regIt != RegList.cend()) {
+        if (const std::optional<Reg> reg = StrToReg(cmd)) {
           if (not checkEQ()) {
             return true;
           }
@@ -1715,9 +1752,8 @@ static inline EventList ReadInput(const NameTable &nameTable) {
             return true;
           }
           eventList.emplace_back(
-              std::make_unique<SetRegEvent>(regIt->second, val));
-        } else if (const auto flgIt = FlgList.find(cmd);
-                   flgIt != FlgList.cend()) {
+              std::make_unique<SetRegEvent>(reg.value(), val));
+        } else if (const std::optional<Flg> flg = StrToFlg(cmd)) {
           if (not checkEQ()) {
             return true;
           }
@@ -1731,22 +1767,24 @@ static inline EventList ReadInput(const NameTable &nameTable) {
               ++curIdx;
               v = true;
             } else {
-              PrintError("'0' or '1' expected.", ErrorType::Input);
+              PrintError("'0' または '1' が必要です。", ErrorType::Input);
               return true;
             }
           }
-          eventList.emplace_back(
-              std::make_unique<SetFlgEvent>(flgIt->second, v));
+          eventList.emplace_back(std::make_unique<SetFlgEvent>(flg.value(), v));
         } else {
           PrintError(
-              std::format("unknown register or flag. (starts with: {})", cmd),
+              std::format(
+                  "レジスタまたはフラグ名が不正です。（名前の開始部: \"{}\"）",
+                  cmd),
               ErrorType::Input);
           return true;
         }
       }
       skipSpaceOrComment();
       if (curIdx < curLine.size()) {
-        PrintError(std::format("invalid input. (value: {})", curLine),
+        PrintError(std::format("入力の後部が解析できませんでした。（行: {}）",
+                               curLine),
                    ErrorType::Input);
         return true;
       }
@@ -1777,7 +1815,9 @@ static inline EventList ReadInput(const NameTable &nameTable) {
 static inline NameTable ReadNameTable(const char *path) {
   std::ifstream ifs{path};
   if (not ifs) {
-    Error(std::format("couldn't open file: \"{}\"", path),
+    Error(std::format("ファイルが開けませんでした。"
+                      "（ファイルのパス: \"{}\"）",
+                      path),
           ErrorType::NameTable);
   }
   NameTable table;
@@ -1808,7 +1848,7 @@ static inline NameTable ReadNameTable(const char *path) {
     skipSpace();
     if (idx < line.size()) {
       if (not isLabelStart()) {
-        printNameTableError("label expected.");
+        printNameTableError("ラベルが必要です。");
         continue;
       }
       std::string label;
@@ -1817,13 +1857,13 @@ static inline NameTable ReadNameTable(const char *path) {
       } while (isLabel());
       skipSpace();
       if (line.size() <= idx || line[idx] != ':') {
-        printNameTableError("':' expected.");
+        printNameTableError("':' が必要です。");
         continue;
       }
       ++idx;
       skipSpace();
       if (line.size() <= idx || not std::isdigit(line[idx])) {
-        printNameTableError("value expected.");
+        printNameTableError("値が必要です。");
         continue;
       }
       std::string numStr;
@@ -1838,7 +1878,7 @@ static inline NameTable ReadNameTable(const char *path) {
         hex = true;
         ++idx;
       } else if (hex) {
-        printNameTableError("'H' expected.");
+        printNameTableError("'H' が必要です。");
         continue;
       }
       try {
@@ -1852,12 +1892,14 @@ static inline NameTable ReadNameTable(const char *path) {
       } catch (const std::invalid_argument &e) {
         BUG("stoi");
       } catch (const std::out_of_range &e) {
-        printNameTableError(std::format("value too long. (value: {})", numStr));
+        printNameTableError(
+            std::format("値が大きすぎます。 （値: {}）", numStr));
         continue;
       }
       skipSpace();
       if (idx < line.size()) {
-        printNameTableError(std::format("invalid format. (line: {})", line));
+        printNameTableError(
+            std::format("名前表の形式が不正です。（行: \"{}\"）", line));
         continue;
       }
     }
@@ -1880,26 +1922,27 @@ struct Source {
 static inline Source readSource(const char *path) {
   std::ifstream ifs{path, std::ios_base::in | std::ios_base::binary};
   if (not ifs) {
-    Error(std::format("couldn't open file. (path: \"{}\")", path),
+    Error(std::format("ファイルが開けませんでした （ファイルのパス: \"{}\"）",
+                      path),
           ErrorType::Binary);
   }
   Source source;
   source.start = static_cast<uint8_t>(ifs.get());
   if (ifs.eof()) {
-    Error(std::format("invalid binary format.", path), ErrorType::Binary);
+    Error("機械語ファイルの形式が不正です。", ErrorType::Binary);
   }
   source.size = static_cast<uint8_t>(ifs.get());
   if (ifs.eof()) {
-    Error(std::format("invalid binary format.", path), ErrorType::Binary);
+    Error("機械語ファイルの形式が不正です。", ErrorType::Binary);
   }
   ifs.read(reinterpret_cast<char *>(source.values.data()),
            sizeof(source.values));
   if (ifs.gcount() != source.size) {
-    Error(std::format("invalid binary format.", path), ErrorType::Binary);
+    Error("機械語ファイルの形式が不正です。", ErrorType::Binary);
   }
   ifs.get();
   if (not ifs.eof()) {
-    Error(std::format("invalid binary format.", path), ErrorType::Binary);
+    Error("機械語ファイルの形式が不正です。", ErrorType::Binary);
   }
   return source;
 }
@@ -1907,7 +1950,7 @@ static inline Source readSource(const char *path) {
 /// @brief 使用方法を出力して終了する。
 /// @param cmd 自分自身の名前
 [[noreturn]] static void Usage(const char *cmd) {
-  std::cerr << std::format("usage: {} <program>.bin [<program>.nt]\n", cmd);
+  std::cerr << std::format("使用方法: {} <program>.bin [<program>.nt]\n", cmd);
   std::exit(1);
 }
 
